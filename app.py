@@ -536,11 +536,31 @@ def bot_heartbeat():
     normalized = {}
     for guild in guilds:
         if isinstance(guild, dict) and guild.get("id"):
+            guild_id = str(guild["id"])
+            if not guild_id.isdigit():
+                continue
+            raw_invite = str(guild.get("invite_url") or "").strip()
+            parsed_invite = urlparse(raw_invite) if raw_invite else None
+            invite_host = (parsed_invite.hostname or "").lower() if parsed_invite else ""
+            invite_path = parsed_invite.path if parsed_invite else ""
+            invite_url = ""
+            if parsed_invite and parsed_invite.scheme == "https":
+                if invite_host == "discord.gg" and invite_path.strip("/"):
+                    invite_url = raw_invite
+                elif invite_host == "discord.com" and invite_path.startswith("/invite/"):
+                    invite_url = raw_invite
+            prefix = str(guild.get("prefix") or "!").strip()[:5] or "!"
+            invite_status = str(guild.get("invite_status") or "unknown")
+            if invite_status not in {"available", "permission_missing", "discord_error", "bot_member_missing", "checking"}:
+                invite_status = "unknown"
             normalized[str(guild["id"])] = {
-                "id": str(guild["id"]),
+                "id": guild_id,
                 "name": str(guild.get("name") or "Discord server"),
                 "member_count": guild.get("member_count"),
-                "invite_url": str(guild.get("invite_url") or "").strip(),
+                "server_url": f"https://discord.com/channels/{guild_id}",
+                "invite_url": invite_url,
+                "invite_status": invite_status,
+                "prefix": prefix,
                 "settings": guild.get("settings") if isinstance(guild.get("settings"), dict) else {},
                 "health": guild.get("health") if isinstance(guild.get("health"), dict) else {},
                 # Preserve the bot-authorized channel/role lists; the dashboard
@@ -997,8 +1017,15 @@ def delete_developer(discord_id):
 
 def all_commands():
     """Prefer the bot's live registry; fall back to the checked-in public catalog while it is offline."""
+    guild_snapshots = bot_guild_snapshot()
+    supported_prefixes = {"!"}
+    for guild_snapshot in guild_snapshots:
+        prefix = str(guild_snapshot.get("prefix") or "!").strip()
+        if 1 <= len(prefix) <= 5:
+            supported_prefixes.add(prefix)
+    prefixes = ["!"] + sorted(supported_prefixes - {"!"}, key=str.casefold)
     raw_commands = None
-    for guild_snapshot in bot_guild_snapshot():
+    for guild_snapshot in guild_snapshots:
         candidate = guild_snapshot.get("command_catalog")
         if isinstance(candidate, list) and candidate:
             raw_commands = candidate
@@ -1045,6 +1072,7 @@ def all_commands():
             "category": category,
             "description": description,
             "aliases": [str(alias)[:80] for alias in aliases[:20] if str(alias).strip()],
+            "prefixes": prefixes if mode == "prefix" else [],
             "permission": permission,
             "mode": mode,
             "usage": usage,
@@ -3118,6 +3146,8 @@ COMMANDS = [
     ("!questions", "Utility", "Answer common questions about Gargand, setup, logging, security, tickets and the website dashboard."),
     ("!about", "Utility", "Show Gargand's launch description: 1.0v LAUNCH."),
     ("!setup", "Admin tools", "Open the interactive server setup dashboard and configure features there."),
+    ("!setup status", "Admin tools", "Check setup, saved channels, the website bridge, and this server's configured prefix."),
+    ("!setup template", "Admin tools", "Choose a Community, Gaming, Creator, or Support starter layout."),
     ("!setup templates", "Admin tools", "Choose a Community, Gaming, Creator, or Support server starter layout with ready-to-edit rules and channels."),
     ("!ban @member [reason]", "Moderation", "Ban a member. Staff only."),
     ("!kick @member [reason]", "Moderation", "Kick a member. Staff only."),
@@ -3206,6 +3236,9 @@ COMMANDS = [
     ("/help", "Utility", "Show Gargand's command help as a Discord slash command."),
     ("/about", "Utility", "Show Gargand's launch information."),
     ("/setup", "Admin tools", "Open the interactive server setup dashboard."),
+    ("/setup status", "Admin tools", "Check setup, saved channels, the website bridge, and this server's configured prefix."),
+    ("/setup template", "Admin tools", "Choose a Community, Gaming, Creator, or Support starter layout."),
+    ("/setup templates", "Admin tools", "Choose a Community, Gaming, Creator, or Support starter layout."),
     ("/ban @member [reason]", "Moderation", "Ban a member. Staff only."),
     ("/kick @member [reason]", "Moderation", "Kick a member. Staff only."),
     ("/warn @member [reason]", "Moderation", "Warn a member. Staff only."),
@@ -3304,6 +3337,10 @@ COMMANDS = [
     ("!stop", "Music", "Stop playback and clear the music queue."),
     ("!queue", "Music", "Show the current track and upcoming songs."),
     ("!nowplaying", "Music", "Show the currently playing track, duration and requester."),
+    ("/join", "Music", "Connect Gargand to your current voice channel."),
+    ("/play <song or URL>", "Music", "Search for a track or play a supported URL."),
+    ("/queue", "Music", "Show the current track and upcoming songs."),
+    ("/nowplaying", "Music", "Show the currently playing track."),
     ("!volume <5-150>", "Music", "Set music volume between 5% and 150%."),
     ("!leave", "Music", "Disconnect Gargand from voice and clear the queue."),
     # New community, feeds, image search and audit commands.
