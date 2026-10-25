@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Gargand • One bot for your server{% endblock %}
+{% block content %}
+<section class="page-head control-hero">
+  <span class="eyebrow">ONE BOT · A FULL SERVER TOOLKIT</span>
+  <h1>More of your server, in one place.</h1>
+  <p>Gargand brings moderation, protection, community, music and server management together, with a website dashboard for the work that belongs on the web.</p>
+  <div class="control-hero-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Add Gargand ↗</a><a class="gg-button gg-button-dark" href="/commands">Explore {{ command_count }} commands</a></div>
+</section>
+<section class="control-feature-grid" aria-label="Gargand capabilities">
+  {% for title, description, items in feature_groups %}
+  <article class="control-feature-card" style="--feature-index:{{ loop.index0 }}">
+    <span class="control-feature-index">0{{ loop.index }}</span>
+    <div><span class="gg-kicker">GARGAND TOOLKIT</span><h2>{{ title }}</h2><p>{{ description }}</p></div>
+    <ul>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul>
+  </article>
+  {% endfor %}
+</section>
+<section class="control-cta">
+  <div><span class="gg-kicker">PRIVATE MEMBER REPORTS</span><h2>Something wrong? Tell Gargand directly.</h2><p>Members can DM <code>report</code> to start a private report. Staff review submissions in the website admin panel.</p></div>
+  <a class="gg-button gg-button-bright" href="/reports">How reporting works ↗</a>
+</section>
+{% endblock %}

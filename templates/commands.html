@@ -4,8 +4,10 @@
 <section class="page-head">
   <span class="eyebrow">GARGAND COMMAND LIBRARY</span>
   <h1>Find your next command.</h1>
-  <p>Commands come from Gargand's registered bot catalog. <code>!</code> always works; configured server prefixes appear on prefix-command cards, and registered slash commands are listed separately.</p>
+  <p>Browse Gargand's registered prefix and slash commands. <code>!</code> always works; configured server prefixes and command permissions appear on each card.</p>
+  <p class="command-catalog-status"><span class="control-live-indicator {% if bot_online %}online{% endif %}">{% if bot_online %}LIVE BOT CATALOG{% else %}LAST CATALOG SNAPSHOT{% endif %}</span> <span>{{ commands|length }} registered command entries</span></p>
 </section>
+<section class="report-command-callout"><div><span class="gg-kicker">PRIVATE REPORTING</span><h2>Need to report something?</h2><p>DM Gargand <code>report</code>. It will collect details privately and send them to the website's staff inbox.</p></div><a class="gg-button gg-button-bright" href="/reports">How reports work ↗</a></section>
 <section class="command-tools" aria-label="Find commands">
   <label class="command-search"><span>⌕</span><input id="commandSearch" type="search" placeholder="Search music, quests, audit logs, aliases, examples…" autocomplete="off" aria-label="Search commands"></label>
   <div class="command-filters" role="group" aria-label="Filter by category">

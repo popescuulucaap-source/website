@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Gargand • Admin Control Room{% endblock %}
 {% block content %}
-<section class="page-head"><span class="eyebrow">PRIVATE CONTROL ROOM</span><h1>Gargand Admin</h1><p>Manage website command entries and publish announcements. These website-only command entries do not create new Discord bot functionality.</p><a class="gg-button gg-button-dark" href="/admin/logout">Log out ↗</a></section>
+<section class="page-head"><span class="eyebrow">PRIVATE CONTROL ROOM</span><h1>Gargand Admin</h1><p>Review member reports, inspect bot activity, and run audited actions for a selected server.</p><div class="control-hero-actions"><a class="gg-button gg-button-bright" href="/admin/console">Open command console ↗</a><a class="gg-button gg-button-dark" href="/admin/reports">Review reports ↗</a><a class="gg-button gg-button-dark" href="/admin/logout">Log out</a></div></section>
 <section class="gg-section">
   <div class="gg-feature-grid">
     <article class="gg-feature"><span class="gg-kicker">BOT STATUS</span><h3>{% if stats.bot_online %}Online{% else %}Waiting for heartbeat{% endif %}</h3><p>{{ stats.guild_count }} servers · {{ stats.member_count }} members</p></article>
@@ -36,8 +36,8 @@
   </div>
 </section>
 <section class="gg-section">
-  <div class="gg-section-head"><div><span class="gg-kicker">QUICK ACCESS</span><h2>More admin tools</h2></div><p>Review support conversations and moderation telemetry.</p></div>
-  <div class="gg-feature-grid"><article class="gg-feature"><h3>Support inbox</h3><p>Review and reply to support tickets.</p><a href="/admin/support">Open inbox ↗</a></article><article class="gg-feature"><h3>Bot activity audit</h3><p>Review available bot events and activity records.</p><a href="/admin/audit">Open audit ↗</a></article><article class="gg-feature"><h3>Community moderation</h3><p>Review community submissions and reports.</p><a href="/admin/community">Open moderation ↗</a></article></div>
+  <div class="gg-section-head"><div><span class="gg-kicker">QUICK ACCESS</span><h2>More admin tools</h2></div><p>Review member reports, support conversations and recorded bot activity.</p></div>
+  <div class="gg-feature-grid"><article class="gg-feature"><h3>Member report inbox</h3><p>Review private reports members DM to Gargand and track staff decisions.</p><a href="/admin/reports">Open reports ↗</a></article><article class="gg-feature"><h3>Command console</h3><p>Run scoped, allowlisted bot actions against one server and review their results.</p><a href="/admin/console">Open console ↗</a></article><article class="gg-feature"><h3>Support inbox</h3><p>Review and reply to support tickets.</p><a href="/admin/support">Open inbox ↗</a></article><article class="gg-feature"><h3>Bot activity audit</h3><p>Review command use, membership events, reports, moderation and admin actions.</p><a href="/admin/audit">Open audit ↗</a></article><article class="gg-feature"><h3>Community moderation</h3><p>Review community submissions and reports.</p><a href="/admin/community">Open moderation ↗</a></article></div>
   {% if not database_enabled %}<p class="gg-db-warning">Database not configured: admin-added commands and announcements are stored in temporary server memory and may disappear when Render restarts. Add DATABASE_URL in Render for durable storage.</p>{% endif %}
 </section>
 <section class="gg-section" id="developers-admin">

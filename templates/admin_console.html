@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Gargand • Admin command console{% endblock %}
+{% block content %}
+<section class="page-head control-admin-hero">
+  <span class="eyebrow">PRIVATE ADMIN · BOT CONTROL</span>
+  <h1>Command console.</h1>
+  <p>Run a small set of audited actions against a server Gargand is connected to. Every request and result is saved to the activity history.</p>
+  <div class="control-hero-actions"><a class="gg-button gg-button-dark" href="/admin/panel">Admin home</a><a class="gg-button gg-button-dark" href="/admin/audit">Activity audit</a><a class="gg-button gg-button-dark" href="/admin/reports">Report inbox</a></div>
+</section>
+<section class="control-console-layout" id="gargandConsole" data-csrf="{{ csrf_token }}">
+  <article class="control-console-panel">
+    <div class="control-console-title"><div><span class="gg-kicker">GARGAND ADMIN CONSOLE</span><h2>Run an action</h2></div><span class="control-live-indicator {% if bot_online %}online{% endif %}">{% if bot_online %}BOT ONLINE{% else %}BOT OFFLINE{% endif %}</span></div>
+    <p class="control-console-description">Commands are restricted to this list. This input cannot run shell commands or arbitrary Python.</p>
+    <div class="control-command-shortcuts"><button type="button" data-command="/status">/status</button><button type="button" data-command="/refresh">/refresh</button><button type="button" data-command="/announce ">/announce</button><button type="button" data-command="/help">/help</button></div>
+    <form id="gargandConsoleForm" class="control-console-form">
+      <label>Server<select name="guild_id" required {% if not guilds or not bot_online %}disabled{% endif %}><option value="">Choose a server…</option>{% for guild in guilds %}<option value="{{ guild.id }}">{{ guild.name }}</option>{% endfor %}</select></label>
+      <label class="control-terminal-label">Command<div class="control-terminal-input"><span aria-hidden="true">›</span><input name="command" type="text" maxlength="1800" placeholder="/status" autocomplete="off" spellcheck="false" required {% if not guilds or not bot_online %}disabled{% endif %}></div></label>
+      <button class="gg-button gg-button-bright" type="submit" {% if not guilds or not bot_online %}disabled{% endif %}>Run command ↗</button>
+    </form>
+    {% if not guilds %}<p class="control-inline-error">No server snapshot has arrived. Start the bot bridge before running commands.</p>{% elif not bot_online %}<p class="control-inline-error">Gargand is offline. The console will unlock after its next heartbeat.</p>{% endif %}
+    <div class="control-command-help"><h3>Available commands</h3><ul><li><code>/status</code> · Read Gargand's status for the selected server.</li><li><code>/refresh</code> · Refresh the saved setup dashboard in the selected server.</li><li><code>/announce &lt;message&gt;</code> · Post to that server's configured announcement channel. Mentions are disabled.</li></ul><p>Set an announcement channel in the server dashboard before using <code>/announce</code>.</p></div>
+    <div id="gargandConsoleOutput" class="control-console-output" role="status" aria-live="polite"><span class="control-output-placeholder">Ready. Choose a server and run <code>/help</code> to see the command list.</span></div>
+  </article>
+  <aside class="control-console-aside"><span class="gg-kicker">SAFE BY DESIGN</span><h2>Actions with a clear scope.</h2><p>Every command targets one selected Discord server. Gargand runs only built-in actions, records who requested them, and returns a completion status.</p><div class="control-console-status-row"><span>Website audit</span><strong>Enabled</strong></div><div class="control-console-status-row"><span>Arbitrary shell</span><strong>Disabled</strong></div><div class="control-console-status-row"><span>Mass mentions</span><strong>Blocked</strong></div></aside>
+</section>
+<section class="control-console-history">
+  <div class="control-section-heading"><div><span class="gg-kicker">RECENT ACTIVITY</span><h2>Command history</h2></div><p>Latest audited console requests.</p></div>
+  {% if error %}<p class="control-inline-error">{{ error }}</p>{% endif %}
+  <div class="control-run-list">
+    {% for run in runs %}<article><div><code>{{ run.command }}</code><p>{{ run.guild_name }} · requested by {{ run.actor_name or run.actor_id }} · {{ run.created_at }}</p></div><div class="control-run-result"><span class="control-status-chip {{ run.status }}">{{ run.status|capitalize }}</span>{% if run.message %}<p>{{ run.message }}</p>{% endif %}</div></article>{% else %}<div class="control-empty-state"><span>⌘</span><h2>No commands run yet</h2><p>Finished and pending commands will appear here.</p></div>{% endfor %}
+  </div>
+</section>
+<script>
+(function () {
+  const root = document.getElementById('gargandConsole');
+  const form = document.getElementById('gargandConsoleForm');
+  const output = document.getElementById('gargandConsoleOutput');
+  if (!root || !form || !output) return;
+  const input = form.elements.command;
+  function line(text, state) {
+    const item = document.createElement('p');
+    item.className = 'control-output-line' + (state ? ' ' + state : '');
+    item.textContent = text;
+    output.prepend(item);
+    while (output.children.length > 8) output.lastElementChild.remove();
+  }
+  document.querySelectorAll('.control-command-shortcuts button').forEach(function (button) {
+    button.addEventListener('click', function () { input.value = button.dataset.command || ''; input.focus(); });
+  });
+  async function poll(jobId, attempt) {
+    if (attempt > 24) { line('Still queued. Check command history in a moment.', 'pending'); return; }
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('/api/admin/console/jobs/' + encodeURIComponent(jobId), { credentials: 'same-origin' });
+      const data = await response.json();
+      if (!response.ok || !data.ok) { line(data.error || 'Could not read command status.', 'failed'); return; }
+      if (data.status === 'pending') { await poll(jobId, attempt + 1); return; }
+      line((data.status === 'success' ? '✓ ' : '× ') + data.message, data.status);
+    } catch (_) { line('Command was queued, but its status could not be loaded.', 'failed'); }
+  }
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    const command = input.value.trim();
+    const guildId = form.elements.guild_id.value;
+    if (!command || !guildId) return;
+    line('› ' + command, 'command');
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/admin/console/commands', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ csrf_token: root.dataset.csrf, command: command, guild_id: guildId })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) { line(data.error || 'Command was not accepted.', 'failed'); return; }
+      if (data.job_id) { line('Queued for Gargand…', 'pending'); await poll(data.job_id, 0); }
+      else { line(data.message || 'Ready.', 'success'); }
+      input.value = '';
+    } catch (_) { line('Could not reach the admin console. Refresh and try again.', 'failed'); }
+    finally { button.disabled = false; }
+  });
+})();
+</script>
+{% endblock %}
