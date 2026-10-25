@@ -238,6 +238,16 @@ INVITE_URL = (os.getenv("INVITE_URL") or (f"https://discord.com/oauth2/authorize
 SUPPORT_URL = "https://discord.gg/AG2m6u9Ahm"  # Official Gargand support invite; do not override with stale deployment env vars.
 OFFICIAL_GUILD_ID = "1561076743236747387"
 ADMIN_DISCORD_USER_ID = "1275463389941858346"
+ADMIN_DISCORD_USER_IDS = frozenset({
+    ADMIN_DISCORD_USER_ID,
+    "1418291387668893699",
+    "1242411642252431385",
+    *(
+        user_id.strip()
+        for user_id in os.getenv("ADMIN_DISCORD_USER_IDS", "").split(",")
+        if user_id.strip().isdigit()
+    ),
+})
 GARGAND_BOT_TOKEN = (os.getenv("GARGAND_BOT_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or "").strip()
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 NIGHTFALL_YOUTUBE_CHANNEL_ID = (os.getenv("GARGAND_YOUTUBE_CHANNEL_ID") or os.getenv("NIGHTFALL_YOUTUBE_CHANNEL_ID") or "").strip()
@@ -313,7 +323,11 @@ def discord_headers():
 def is_admin():
     """Admin access requires a Discord OAuth session for the explicitly allowed user."""
     user = session.get("user") or {}
-    return bool(session.get("admin") and str(user.get("id", "")) == ADMIN_DISCORD_USER_ID)
+    return bool(session.get("admin") and str(user.get("id", "")) in ADMIN_DISCORD_USER_IDS)
+
+
+def is_admin_user(user):
+    return str((user or {}).get("id", "")) in ADMIN_DISCORD_USER_IDS
 
 
 def login_required(fn):
@@ -1060,13 +1074,13 @@ def admin_login():
     user = session.get("user") or {}
     if is_admin():
         return redirect(url_for("admin"))
-    if str(user.get("id", "")) == ADMIN_DISCORD_USER_ID:
+    if is_admin_user(user):
         session["admin"] = True
         session["admin_authenticated_at"] = time.time()
         session["admin_csrf_token"] = secrets.token_urlsafe(32)
         return redirect(url_for("admin"))
     if session.get("access_token"):
-        return "Access denied. The admin panel is restricted to the verified Gargand developer account.", 403
+        return "Access denied. The admin panel is restricted to approved Gargand owner and developer accounts.", 403
     return redirect(url_for("login", next="/admin/panel"))
 
 @app.get("/admin/panel")
@@ -1874,8 +1888,8 @@ def oauth_callback():
 
     next_path = session.pop("oauth_next", "")
     if next_path == "/admin/panel":
-        if str(user.get("id", "")) != ADMIN_DISCORD_USER_ID:
-            return "Access denied. The admin panel is restricted to the verified Gargand developer account.", 403
+        if not is_admin_user(user):
+            return "Access denied. The admin panel is restricted to approved Gargand owner and developer accounts.", 403
         session["admin"] = True
         session["admin_authenticated_at"] = time.time()
         session["admin_csrf_token"] = secrets.token_urlsafe(32)

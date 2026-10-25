@@ -381,7 +381,7 @@ window.GARGAND_GUILD_ID = {{ guild.id | tojson }};
     if(input.type==='checkbox')return input.checked;
     return input.value||input.dataset.current||(snapshot.settings||{})[key]||'';
   }
-  function addCheck(kind,title,detail,tab){
+  function addCheck(kind,title,detail){
     var row=document.createElement('li');
     row.className='setup-check '+kind;
     var state=document.createElement('span');
@@ -394,60 +394,58 @@ window.GARGAND_GUILD_ID = {{ guild.id | tojson }};
     var description=document.createElement('span');
     description.textContent=detail;
     copy.appendChild(heading);copy.appendChild(description);
-    if(kind!=='pass'&&tab){
-      var fix=document.createElement('a');
-      fix.href='#';fix.className='setup-check-fix dashboard-jump';fix.dataset.tabJump=tab;
-      fix.textContent='Review this setting →';copy.appendChild(fix);
-    }
     row.appendChild(state);row.appendChild(copy);list.appendChild(row);
     return kind==='pass';
   }
+  function settingLink(text,tab){
+    var a=document.createElement('a');a.href='#';a.className='dashboard-jump';a.dataset.tabJump=tab;a.textContent=text;return a;
+  }
   button.addEventListener('click',async function(){
     button.disabled=true;button.textContent='Checking…';list.replaceChildren();
-    var checks=[],health=snapshot.health||{},resources=null,errorText='';
+    var checks=[],passed=0,health=snapshot.health||{},resources=null,errorText='';
     try{
       var response=await fetch(api,{headers:{'Accept':'application/json'}});
       if(!response.ok)throw new Error('Discord returned '+response.status);
       resources=await response.json();
       if(!resources.ok)throw new Error(resources.error||'Could not load Discord resources.');
     }catch(error){errorText=error.message||'Could not reach Discord.'}
-    function check(kind,title,detail,tab){checks.push({kind:kind,title:title,detail:detail,tab:tab})}
+    function check(kind,title,detail){checks.push({kind:kind,title:title,detail:detail});if(addCheck(kind,title,detail))passed++}
     if(snapshot.online)check('pass','Bot connection','Gargand is online in this server and checking in with the website.');
     else check('fail','Bot connection','Gargand is offline or has not checked in for this server.');
     if(errorText){
       check('fail','Discord resources',errorText);
     }else{
       var channels=resources.channels||[],roles=resources.roles||[];
-      function channelCheck(key,label,tab){
+      function channelCheck(key,label){
         var id=String(settingValue(key)||'');
-        if(!id){check('warn',label,'Choose a channel in the linked settings tab.',tab);return}
+        if(!id){check('warn',label,'Choose a channel in the linked settings tab.');return}
         var channel=channels.find(function(item){return String(item.id)===id});
-        if(!channel){check('fail',label,'The saved channel is missing or no longer belongs to this server.',tab);return}
+        if(!channel){check('fail',label,'The saved channel is missing or no longer belongs to this server.');return}
         var live=health.channels&&health.channels[key];
-        if(!health.available||!live){check('warn',label,'Channel exists as #'+channel.name+'; waiting for Gargand’s permission check.',tab);return}
+        if(!health.available||!live){check('warn',label,'Channel exists as #'+channel.name+'; waiting for Gargand’s permission check.');return}
         var missing=[];
         if(!live.can_view)missing.push('view channel');
         if(!live.can_send)missing.push('send messages');
         if(!live.can_embed)missing.push('embed links');
-        if(missing.length)check('warn',label,'#'+channel.name+' is set, but Gargand needs '+missing.join(', ')+'.',tab);
+        if(missing.length)check('warn',label,'#'+channel.name+' is set, but Gargand needs '+missing.join(', ')+'.');
         else check('pass',label,'#'+channel.name+' is available to Gargand.');
       }
-      function roleCheck(key,label,needsAssignment,tab){
+      function roleCheck(key,label,needsAssignment){
         var id=String(settingValue(key)||'');
-        if(!id){check('warn',label,'Choose a role in Security & Auto-Mod.',tab);return}
+        if(!id){check('warn',label,'Choose a role in Security & Auto-Mod.');return}
         var role=roles.find(function(item){return String(item.id)===id});
-        if(!role){check('fail',label,'The saved role is missing or no longer belongs to this server.',tab);return}
+        if(!role){check('fail',label,'The saved role is missing or no longer belongs to this server.');return}
         var live=health.roles&&health.roles[key];
-        if(!health.available||!live){check('warn',label,'Role exists as @'+role.name+'; waiting for Gargand’s hierarchy check.',tab);return}
-        if(needsAssignment&&!live.assignable)check('warn',label,'@'+role.name+' is above Gargand’s highest role or is managed. Move Gargand’s role higher in Server Settings → Roles.',tab);
+        if(!health.available||!live){check('warn',label,'Role exists as @'+role.name+'; waiting for Gargand’s hierarchy check.');return}
+        if(needsAssignment&&!live.assignable)check('warn',label,'@'+role.name+' is above Gargand’s highest role or is managed. Move Gargand’s role higher in Server Settings → Roles.');
         else check('pass',label,'@'+role.name+' exists'+(needsAssignment?' and is below Gargand’s highest role.':'.'));
       }
-      roleCheck('staff_role_id','Staff role',false,'general');
-      channelCheck('logs_channel_id','Audit log channel','general');
-      channelCheck('verification_channel_id','Verification channel','security');
-      roleCheck('verified_role_id','Verified role',true,'security');
-      roleCheck('unverified_role_id','Unverified role',true,'security');
-      channelCheck('ticket_panel_channel_id','Ticket panel channel','tickets');
+      roleCheck('staff_role_id','Staff role',false);
+      channelCheck('logs_channel_id','Audit log channel');
+      channelCheck('verification_channel_id','Verification channel');
+      roleCheck('verified_role_id','Verified role',true);
+      roleCheck('unverified_role_id','Unverified role',true);
+      channelCheck('ticket_panel_channel_id','Ticket panel channel');
       if(health.available){
         var perms=health.permissions||{};
         var needsRole=!!(settingValue('autorole_id')||settingValue('verified_role_id')||settingValue('unverified_role_id'));
@@ -460,10 +458,10 @@ window.GARGAND_GUILD_ID = {{ guild.id | tojson }};
     if(!checks.length)check('warn','Health check','No checks were returned.');
     list.replaceChildren();
     var passedCount=0;
-    checks.forEach(function(item){if(addCheck(item.kind,item.title,item.detail,item.tab))passedCount++});
+    checks.forEach(function(item){if(addCheck(item.kind,item.title,item.detail))passedCount++});
     var percent=Math.round(100*passedCount/checks.length);
     progress.style.width=percent+'%';bar.setAttribute('aria-valuenow',String(percent));
-    summary.textContent=passedCount===checks.length?'Setup looks good · '+passedCount+' checks clear.':passedCount+' of '+checks.length+' checks clear · review the items below.';
+    summary.textContent=passedCount+' of '+checks.length+' checks clear.';
     button.textContent='Run again';button.disabled=false;
     list.querySelectorAll('.dashboard-jump').forEach(function(link){link.addEventListener('click',function(event){event.preventDefault();var tab=link.dataset.tabJump;var target=document.querySelector('[data-tab="'+tab+'"]');if(target)target.click()})});
   });

@@ -1,20 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Gargand — Discord moderation and security{% endblock %}
+{% block title %}GARGAND — Golden security for your server{% endblock %}
 {% block content %}
+<div class="gg-cinematic-intro" id="ggCinematicIntro" role="dialog" aria-modal="true" aria-label="Gargand cinematic introduction">
+  <div class="gg-intro-orbit" aria-hidden="true"></div>
+  <div class="gg-intro-center">
+    <span class="gg-intro-pretitle">A new guardian rises</span>
+    <div class="gg-intro-mark"><img src="{{ url_for('gargand_lion_asset') }}?v=20261024-cinematic" alt="" width="196" height="196" fetchpriority="high"></div>
+    <h1 class="gg-intro-title">GARGAND</h1>
+    <p class="gg-intro-subtitle">Command the chaos. Protect your realm.</p>
+    <div class="gg-intro-rule" aria-hidden="true"></div>
+    <button class="gg-intro-enter" type="button" data-intro-dismiss>Enter the realm <span aria-hidden="true">↗</span></button>
+  </div>
+  <button class="gg-intro-skip" type="button" data-intro-dismiss>Skip intro ×</button>
+</div>
 <section class="gg-hero gg-hero-upgrade">
   <div class="gg-hero-copy">
-    <span class="gg-kicker"><i aria-hidden="true"></i> DISCORD MODERATION · SECURITY · COMMUNITY</span>
-    <h1>Run your server<br><span>with confidence.</span></h1>
-    <p>Manage moderation, security, support, and community tools from one clear control center—so your team can focus on its members.</p>
-    <div class="gg-hero-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Add Gargand to Discord <span aria-hidden="true">↗</span></a><a class="gg-button gg-button-dark" href="/commands">Explore features <span aria-hidden="true">→</span></a><a class="gg-button gg-button-dark" href="#cinematic-tour">View product tour <span aria-hidden="true">↓</span></a></div>
-    <div class="gg-trust-list"><span><b>01</b> Moderation &amp; cases</span><span><b>02</b> Layered protection</span><span><b>03</b> Straightforward setup</span></div>
+    <span class="gg-kicker"><i aria-hidden="true"></i> MODERATION · SECURITY · COMMUNITY</span>
+    <h1>Lead with<br><span>confidence.</span><br>Guard with Gargand.</h1>
+    <p>One crowned guardian for your Discord server: practical moderation, layered protection, member support and a control room that keeps setup simple.</p>
+    <div class="gg-hero-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Add Gargand to Discord <span aria-hidden="true">↗</span></a><a class="gg-button gg-button-dark" href="/commands">Explore commands <span aria-hidden="true">↓</span></a><a class="gg-button gg-button-dark" href="#cinematic-tour">Watch the film <span aria-hidden="true">▶</span></a></div>
+    <div class="gg-trust-list"><span><b>01</b> Protect your server</span><span><b>02</b> Support your members</span><span><b>03</b> Configure from one place</span></div>
   </div>
-  <div class="gg-hero-art" aria-label="Gargand logo">
+  <div class="gg-hero-art" aria-label="Gargand crowned golden lion emblem">
     <div class="gg-hero-art-ring gg-hero-art-ring-one" aria-hidden="true"></div>
     <div class="gg-hero-art-ring gg-hero-art-ring-two" aria-hidden="true"></div>
     <div class="gg-hero-art-glow" aria-hidden="true"></div>
+    <div class="gg-roar-wave" aria-hidden="true"></div>
     <div class="gg-black-logo"><div class="gg-lion-orbit" aria-hidden="true"></div><img src="{{ url_for('gargand_lion_asset') }}?v=4k1" alt="GARGAND crowned golden lion" fetchpriority="high" loading="eager"></div>
-    <div class="gg-crest-label"><span class="gg-crest-signal"></span><span>GARGAND · SERVER MANAGEMENT</span><b>01</b></div>
+    <div class="gg-crest-label"><span class="gg-crest-signal"></span><span>THE CROWNED WATCHER</span><b>G · 01</b></div>
+    <div class="gg-lion-controls" role="group" aria-label="Lion sound effect">
+      <button class="gg-lion-roar" id="ggLionRoar" type="button">♛ Hear the lion</button>
+      <span id="ggLionRoarStatus" aria-live="polite">Sound is off until you choose it.</span>
+    </div>
   </div>
 </section>
 <section class="gg-proof-strip" aria-label="Gargand systems">
@@ -25,14 +42,14 @@
 </section>
 <section class="gg-film-section" id="cinematic-tour" aria-labelledby="gg-film-heading">
   <div class="gg-film-heading">
-    <div><span class="gg-kicker">THE GARGAND EXPERIENCE · PRODUCT TOUR</span><h2 id="gg-film-heading">Not just a bot.<br><span>Your command centre.</span></h2></div>
-    <p>An animated look at the tools behind Gargand—from layered server protection to member support and the web dashboard.</p>
+    <div><span class="gg-kicker">THE GARGAND EXPERIENCE · CINEMATIC TOUR</span><h2 id="gg-film-heading">Not just a bot.<br><span>Your command centre.</span></h2></div>
+    <p>A continuous look at the tools behind Gargand—from layered server protection to member support and the web dashboard. The scenes flow together as one living part of the website.</p>
   </div>
-  <div class="gg-film-frame" id="ggCinematicFilm" data-film-state="animated-showcase" data-film-scene="0" tabindex="0" role="region" aria-label="Gargand product showcase with automatically transitioning scenes.">
-    <div class="gg-film-topline"><span><strong>GARGAND</strong> PRODUCT TOUR</span><span class="gg-film-live">FEATURE OVERVIEW</span></div>
+  <div class="gg-film-frame" id="ggCinematicFilm" data-film-state="continuous" data-film-scene="0" tabindex="0" role="region" aria-label="Gargand cinematic product showcase with automatically transitioning scenes.">
+    <div class="gg-film-topline"><span><strong>GARGAND</strong> ORIGINALS</span><span class="gg-film-live">A LIVING SHOWCASE</span></div>
 
     <article class="gg-film-scene is-active" data-film-scene-panel="0" aria-hidden="false">
-      <div class="gg-film-copy"><span class="gg-film-eyebrow">01 / BUILT FOR YOUR SERVER</span><h3>Your server.<span>Your tools.</span></h3><p>Moderation, security, and member support in one Discord bot.</p><span class="gg-film-index">MODERATION · SECURITY · COMMUNITY</span></div>
+      <div class="gg-film-copy"><span class="gg-film-eyebrow">01 / A NEW GUARDIAN RISES</span><h3>Your server.<span>Your realm.</span></h3><p>Meet Gargand: a golden guardian for the moving parts of your Discord community.</p><span class="gg-film-index">MODERATION · SECURITY · COMMUNITY</span></div>
       <div class="gg-film-visual"><div class="gg-film-sigil"><span class="gg-film-sigil-glow"></span><img src="{{ url_for('gargand_lion_asset') }}?v=film20261024" alt="Gargand golden lion emblem" loading="lazy"></div></div>
     </article>
 
@@ -57,7 +74,7 @@
     </article>
 
     <article class="gg-film-scene" data-film-scene-panel="5" aria-hidden="true">
-      <div class="gg-film-copy"><span class="gg-film-eyebrow">06 / GET STARTED</span><h3>Keep your community<span>running smoothly.</span></h3><p>Invite Gargand, review the available tools, and set up the features your server needs.</p><div class="gg-film-final-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Add Gargand ↗</a><a class="gg-button gg-button-dark" href="/commands">Explore commands ↗</a></div><span class="gg-film-index">GARGAND · BUILT FOR COMMUNITIES</span></div>
+      <div class="gg-film-copy"><span class="gg-film-eyebrow">06 / YOUR NEXT CHAPTER</span><h3>Command the chaos.<span>Protect your realm.</span></h3><p>Bring the golden guardian to your server, explore the command library, and shape a community that works for you.</p><div class="gg-film-final-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Add Gargand ↗</a><a class="gg-button gg-button-dark" href="/commands">Explore commands ↗</a></div><span class="gg-film-index">GARGAND · BUILT FOR COMMUNITIES</span></div>
       <div class="gg-film-visual"><div class="gg-film-final-mark"><img src="{{ url_for('gargand_lion_asset') }}?v=film20261024" alt="" loading="lazy"></div></div>
     </article>
 

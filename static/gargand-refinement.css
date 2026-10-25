@@ -86,6 +86,90 @@ body.gargand-site::before {
   animation: none !important;
 }
 
+.gg-cinematic-intro {
+  background: rgba(6, 14, 24, .94) !important;
+}
+
+.gg-cinematic-intro::before {
+  background: radial-gradient(ellipse at 50% 15%, rgba(198, 157, 73, .12), transparent 46%) !important;
+  animation: none !important;
+}
+
+.gg-intro-orbit {
+  border-color: rgba(173, 194, 216, .12) !important;
+  animation: none !important;
+}
+
+.gg-intro-orbit::before,
+.gg-intro-orbit::after {
+  border-color: rgba(173, 194, 216, .1) !important;
+}
+
+.gg-intro-center {
+  width: min(620px, calc(100% - 32px));
+  padding: clamp(26px, 5vw, 46px);
+  border: 1px solid rgba(169, 187, 209, .18);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(17, 31, 48, .97), rgba(8, 17, 29, .98));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .4), inset 0 1px rgba(255, 255, 255, .04);
+}
+
+.gg-intro-mark,
+.gg-intro-mark::before,
+.gg-intro-pretitle,
+.gg-intro-title,
+.gg-intro-subtitle,
+.gg-intro-rule,
+.gg-intro-enter,
+.gg-intro-skip {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}
+
+.gg-intro-mark {
+  margin: 20px 0 17px;
+  filter: none !important;
+}
+
+.gg-intro-mark::before {
+  inset: -8px;
+  border: 1px solid rgba(231, 189, 89, .3);
+  border-radius: 24px;
+  box-shadow: none;
+}
+
+.gg-intro-mark img {
+  border-radius: 14px;
+}
+
+.gg-intro-title {
+  color: var(--gg-copy) !important;
+  text-shadow: none !important;
+}
+
+.gg-intro-subtitle {
+  color: var(--gg-copy-muted) !important;
+}
+
+.gg-intro-enter {
+  border-color: rgba(231, 189, 89, .5) !important;
+  border-radius: 11px !important;
+  background: linear-gradient(135deg, #f3d486, #d9ac43) !important;
+  color: #17130a !important;
+  letter-spacing: .06em !important;
+}
+
+.gg-intro-skip {
+  color: #c1cad5 !important;
+}
+
+body.gg-intro-complete #main-content .gg-hero-copy {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}
+
 .gg-header {
   border-color: rgba(211, 181, 112, .24) !important;
   background: rgba(9, 18, 30, .9) !important;
