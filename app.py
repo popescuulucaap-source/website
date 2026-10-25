@@ -6,6 +6,7 @@ import json
 import secrets
 import base64
 import hashlib
+import shlex
 import threading
 import time
 from datetime import date, timedelta
@@ -1383,12 +1384,141 @@ def admin():
     return render_template("admin.html", announcements=announcements, custom_commands=custom_commands, developers=load_developers(), database_enabled=bool(DATABASE_URL), stats=stats, bot_guilds=guilds)
 
 
+TERMINAL_COMMANDS = [
+    {"name": "Get-Help", "kind": "local", "local": "help", "description": "Show terminal commands and examples.", "aliases": ["help", "/help"]},
+    {"name": "Clear-Host", "kind": "local", "local": "clear", "description": "Clear the terminal output.", "aliases": ["clear", "cls"]},
+    {"name": "Get-GargandServers", "kind": "local", "local": "servers", "description": "List connected servers, IDs, member counts, and invite status.", "aliases": ["servers", "Get-Servers"]},
+    {"name": "Get-GargandCommands", "kind": "local", "local": "commands", "description": "Search the live bot command catalog. Supports -Category and -Limit.", "aliases": ["commands", "Get-Commands", "Get-Command"]},
+    {"name": "Get-GargandActivity", "kind": "local", "local": "activity", "description": "Show recent command, interaction, report, and bot activity events.", "aliases": ["activity", "Get-Activity"]},
+    {"name": "Get-GargandPopularCommands", "kind": "local", "local": "top_commands", "description": "Rank the most-used bot commands over the last seven days. Supports -Limit.", "aliases": ["popular-commands", "Get-TopCommands"]},
+    {"name": "Get-GargandRecentErrors", "kind": "local", "local": "errors", "description": "Show recent failed bot command names without exposing submitted arguments. Supports -Limit.", "aliases": ["errors", "Get-CommandErrors"]},
+    {"name": "Get-GargandRecentReports", "kind": "local", "local": "recent_reports", "description": "List recent reports without exposing private report details. Supports -Limit.", "aliases": ["recent-reports", "Get-ReportsRecent"]},
+    {"name": "Get-GargandUsageSummary", "kind": "local", "local": "usage", "description": "Count recent commands, errors, interactions, reports, tickets, and joins. Supports -Days.", "aliases": ["usage", "Get-UsageSummary"]},
+    {"name": "Get-GargandChannels", "kind": "local", "local": "channels", "description": "List channels in the selected server.", "aliases": ["channels", "Get-Channels"]},
+    {"name": "Get-GargandRoles", "kind": "local", "local": "roles", "description": "List roles in the selected server.", "aliases": ["roles", "Get-Roles"]},
+    {"name": "Get-GargandInvite", "kind": "local", "local": "invite", "description": "Show the bot's server invite link when available.", "aliases": ["invite", "Get-Invite"]},
+    {"name": "Get-GargandMemberCount", "kind": "local", "local": "members", "description": "Show the selected server's member count.", "aliases": ["members", "Get-Members"]},
+    {"name": "Get-GargandServerHealth", "kind": "local", "local": "server_health", "description": "Show the latest server setup and permission health snapshot.", "aliases": ["server-health", "Get-ServerHealth"]},
+    {"name": "Get-GargandMusicStatus", "kind": "local", "local": "music", "description": "Inspect the selected server's live music player snapshot.", "aliases": ["music", "Get-MusicStatus"]},
+    {"name": "Get-GargandCommunity", "kind": "local", "local": "community", "description": "Inspect the latest community and engagement snapshot.", "aliases": ["community", "Get-CommunityStatus"]},
+    {"name": "Get-GargandNotifications", "kind": "local", "local": "notifications", "description": "Inspect configured notification sources and their status.", "aliases": ["notifications", "Get-NotificationStatus"]},
+    {"name": "Get-GargandServerAudit", "kind": "local", "local": "server_audit", "description": "Show recent server audit actions collected by Gargand.", "aliases": ["server-audit", "Get-ServerAudit"]},
+    {"name": "Get-GargandReportCounts", "kind": "local", "local": "reports", "description": "Show counts for open, reviewing, resolved, and dismissed reports.", "aliases": ["reports", "Get-Reports"]},
+    {"name": "Get-GargandHistory", "kind": "local", "local": "history", "description": "Show recent commands run from this admin console.", "aliases": ["history", "Get-History"]},
+    {"name": "Get-GargandConfiguration", "kind": "local", "local": "configuration", "description": "Show safe setup values for the selected server.", "aliases": ["config", "Get-Configuration"]},
+    {"name": "Test-GargandBridge", "kind": "local", "local": "bridge", "description": "Check the website-to-bot heartbeat and server snapshot.", "aliases": ["bridge", "Test-Bridge"]},
+    {"name": "Get-GargandStatus", "kind": "bot_action", "action": "status", "description": "Read Gargand's live status for the selected server.", "aliases": ["status", "/status", "Get-GargandServerStatus"]},
+    {"name": "Get-GargandHealth", "kind": "bot_action", "action": "health", "description": "Check core permissions and setup health in the selected server.", "aliases": ["health", "Get-Health"]},
+    {"name": "Sync-GargandSetup", "kind": "bot_action", "action": "refresh", "description": "Refresh the saved !setup dashboard.", "aliases": ["refresh", "/refresh", "Sync-Setup"]},
+    {"name": "Send-GargandAnnouncement", "kind": "bot_action", "action": "announce", "description": "Post a mention-safe announcement in the configured channel. Use -Message.", "aliases": ["announce", "/announce", "Send-Announcement"]},
+    {"name": "Post-GargandTicketPanel", "kind": "bot_action", "action": "post_ticket_panel", "description": "Post a ticket panel in the configured panel channel.", "aliases": ["Post-TicketPanel"]},
+    {"name": "Post-GargandVerificationPanel", "kind": "bot_action", "action": "post_verification_panel", "description": "Post or refresh the verification panel.", "aliases": ["Post-VerificationPanel"]},
+    {"name": "Post-GargandFeedbackPanel", "kind": "bot_action", "action": "post_feedback_panel", "description": "Post a feedback panel in the configured channel.", "aliases": ["Post-FeedbackPanel"]},
+    {"name": "Post-GargandApplicationPanel", "kind": "bot_action", "action": "post_application_panel", "description": "Post a staff application panel in the configured channel.", "aliases": ["Post-ApplicationPanel"]},
+    {"name": "Start-GargandRaidLockdown", "kind": "bot_action", "action": "raid_lockdown", "description": "Temporarily pause @everyone posting for 10 minutes; original permissions are restored afterward.", "aliases": ["Lock-GargandServer", "Start-RaidLockdown"]},
+    {"name": "Stop-GargandRaidLockdown", "kind": "bot_action", "action": "raid_release", "description": "Restore channels managed by an active Gargand raid lockdown.", "aliases": ["Unlock-GargandServer", "Stop-RaidLockdown"]},
+]
+TERMINAL_COMMAND_LOOKUP = {}
+for _terminal_command in TERMINAL_COMMANDS:
+    TERMINAL_COMMAND_LOOKUP[_terminal_command["name"].casefold()] = _terminal_command
+    for _terminal_alias in _terminal_command.get("aliases", []):
+        TERMINAL_COMMAND_LOOKUP[str(_terminal_alias).casefold()] = _terminal_command
+
+
+def _console_activity_item(row):
+    event_id, event_type, guild_id, guild_name, user_id, username, command_name, metadata_raw, created_at = row
+    try:
+        metadata = json.loads(metadata_raw) if isinstance(metadata_raw, str) else (metadata_raw or {})
+    except (TypeError, ValueError):
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    actor = str(username or user_id or "Someone")[:120]
+    command = str(command_name or "").strip()[:120]
+    invocation = str(metadata.get("invocation_type") or "").lower()
+    prefix = "/" if invocation == "slash" else "!" if invocation == "prefix" else ""
+    if event_type == "command_used":
+        description = f"used {prefix}{command}" if command else "used Gargand"
+    elif event_type == "command_error":
+        description = f"tried {prefix}{command}; it failed" if command else "ran a command that failed"
+    elif event_type == "component_used":
+        description = f"used {command or 'a Gargand button'}"
+    elif event_type == "report_submitted":
+        description = "sent a private report"
+    elif event_type == "report_review_updated":
+        description = "updated a report review"
+    elif event_type == "member_joined":
+        description = "joined the server"
+    elif event_type == "member_left":
+        description = "left the server"
+    elif event_type == "ticket_created":
+        description = "opened a ticket"
+    elif event_type == "ticket_closed":
+        description = "closed a ticket"
+    elif event_type == "settings_updated":
+        description = "updated Gargand server settings"
+    elif event_type == "admin_console_queued":
+        description = f"queued {command or 'a console command'}"
+    elif event_type == "admin_console_completed":
+        description = f"completed {command or 'a console command'}"
+    elif event_type == "dashboard_action":
+        description = f"used the dashboard action {str(metadata.get('action') or command or 'unknown')[:80]}"
+    elif event_type == "security_incident":
+        description = f"triggered a security event{(': ' + command) if command else ''}"
+    else:
+        description = str(event_type or "used Gargand").replace("_", " ")[:120]
+    try:
+        display_time = created_at.strftime("%H:%M:%S UTC")
+    except (AttributeError, ValueError):
+        display_time = str(created_at or "")[:40]
+    return {
+        "id": str(event_id), "event_type": str(event_type or "activity"),
+        "user": actor, "description": description,
+        "server": str(guild_name or guild_id or "Unknown server")[:120],
+        "time": display_time,
+    }
+
+
+def _console_parse_command(clean_command):
+    try:
+        tokens = shlex.split(clean_command, posix=True)
+    except ValueError:
+        return None, {}, [], "Quotes are unclosed. Put quotes around multi-word values."
+    if not tokens:
+        return None, {}, [], "Type a command or run `Get-Help`."
+    definition = TERMINAL_COMMAND_LOOKUP.get(tokens[0].casefold())
+    if definition is None:
+        definition = TERMINAL_COMMAND_LOOKUP.get(tokens[0].lstrip("!/").casefold())
+    if definition is None:
+        return None, {}, [], f"Unknown command `{tokens[0]}`. Run `Get-Help` to see the command list."
+    parameters = {}
+    positional = []
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token.startswith("-") and len(token) > 1:
+            key, has_value, inline_value = token[1:].partition("=")
+            if has_value:
+                parameters[key.casefold()] = inline_value
+            elif index + 1 < len(tokens) and not (tokens[index + 1].startswith("-") and re.fullmatch(r"-[A-Za-z][A-Za-z0-9]*", tokens[index + 1])):
+                parameters[key.casefold()] = tokens[index + 1]
+                index += 1
+            else:
+                parameters[key.casefold()] = True
+        else:
+            positional.append(token)
+        index += 1
+    return definition, parameters, positional, ""
+
+
 @app.get("/admin/console")
 def admin_console():
     if not is_admin():
         return redirect(url_for("admin_login"))
     guilds = sorted(bot_guild_snapshot(), key=lambda guild: str(guild.get("name") or "").casefold())
     runs = []
+    activity = []
+    activity_cursor = "0"
     error = ""
     if DATABASE_URL:
         try:
@@ -1397,6 +1527,13 @@ def admin_console():
                     "SELECT job_id,guild_id,guild_name,actor_id,actor_name,command,status,message,created_at "
                     "FROM admin_console_runs ORDER BY created_at DESC LIMIT 40"
                 ).fetchall()
+                activity_rows = conn.execute(
+                    "SELECT id,event_type,guild_id,guild_name,user_id,username,command_name,metadata,created_at "
+                    "FROM bot_telemetry ORDER BY id DESC LIMIT 20"
+                ).fetchall()
+                cursor_row = conn.execute("SELECT COALESCE(MAX(id),0) FROM bot_telemetry").fetchone()
+            activity = [_console_activity_item(row) for row in reversed(activity_rows)]
+            activity_cursor = str(cursor_row[0] or 0)
             runs = [{
                 "job_id": int(row[0]), "guild_id": str(row[1]), "guild_name": str(row[2] or ""),
                 "actor_id": str(row[3]), "actor_name": str(row[4] or ""), "command": str(row[5]),
@@ -1407,7 +1544,43 @@ def admin_console():
             error = "Command history is temporarily unavailable."
     else:
         error = "Connect the website database to keep command history."
-    return render_template("admin_console.html", guilds=guilds, runs=runs, error=error, bot_online=bot_online())
+    return render_template(
+        "admin_console.html", guilds=guilds, runs=runs, activity=activity,
+        activity_cursor=activity_cursor, terminal_commands=TERMINAL_COMMANDS,
+        error=error, bot_online=bot_online(),
+    )
+
+
+@app.get("/api/admin/console/activity")
+def admin_console_activity():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "Admin access is required."}), 403
+    if not DATABASE_URL:
+        return jsonify({"ok": False, "error": "Activity history is unavailable without the website database."}), 503
+    try:
+        after_id = max(0, int(request.args.get("after", "0")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Invalid activity cursor."}), 400
+    try:
+        with db_connect() as conn:
+            if after_id:
+                rows = conn.execute(
+                    "SELECT id,event_type,guild_id,guild_name,user_id,username,command_name,metadata,created_at "
+                    "FROM bot_telemetry WHERE id>%s ORDER BY id ASC LIMIT 100", (after_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id,event_type,guild_id,guild_name,user_id,username,command_name,metadata,created_at "
+                    "FROM bot_telemetry ORDER BY id DESC LIMIT 20"
+                ).fetchall()
+        events = [_console_activity_item(row) for row in (rows if after_id else reversed(rows))]
+    except psycopg.Error as exc:
+        app.logger.warning("Could not read live bot activity: %s", type(exc).__name__)
+        return jsonify({"ok": False, "error": "Live activity is temporarily unavailable."}), 503
+    cursor = events[-1]["id"] if events else str(after_id)
+    response = jsonify({"ok": True, "events": events, "cursor": cursor})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/api/admin/console/commands")
@@ -1416,39 +1589,248 @@ def admin_console_command():
         return jsonify({"ok": False, "error": "Admin access is required."}), 403
     if not valid_admin_csrf():
         return jsonify({"ok": False, "error": "Your session expired. Refresh the page and try again."}), 400
-    if not DATABASE_URL:
-        return jsonify({"ok": False, "error": "The database is required to queue and audit bot commands."}), 503
-    if not bot_online():
-        return jsonify({"ok": False, "error": "Gargand is offline. Bring the bot online before running a command."}), 503
     payload = request.get_json(silent=True) or {}
-    guild_id = str(payload.get("guild_id") or "").strip()
     clean_command = str(payload.get("command") or "").strip()
-    if not guild_id.isdigit() or len(guild_id) > 22:
-        return jsonify({"ok": False, "error": "Choose a valid server."}), 400
     if not clean_command or len(clean_command) > 1800 or "\n" in clean_command or "\r" in clean_command:
         return jsonify({"ok": False, "error": "Enter one command, up to 1,800 characters."}), 400
+    definition, parameters, positional, parse_error = _console_parse_command(clean_command)
+    if parse_error:
+        return jsonify({"ok": False, "error": parse_error}), 400
+    if definition["kind"] == "local":
+        local_action = definition["local"]
+        allowed_local_parameters = {
+            "help": set(), "clear": set(), "servers": set(), "commands": {"category", "limit"},
+            "activity": {"limit"}, "top_commands": {"limit"}, "errors": {"limit"},
+            "recent_reports": {"limit"}, "usage": {"days"},
+            "channels": {"serverid", "guildid"}, "roles": {"serverid", "guildid"},
+            "invite": {"serverid", "guildid"}, "members": {"serverid", "guildid"},
+            "server_health": {"serverid", "guildid"}, "music": {"serverid", "guildid"},
+            "community": {"serverid", "guildid"}, "notifications": {"serverid", "guildid"},
+            "server_audit": {"serverid", "guildid"}, "configuration": {"serverid", "guildid"},
+            "reports": set(), "history": set(), "bridge": set(),
+        }
+        invalid_parameters = set(parameters) - allowed_local_parameters.get(local_action, set())
+        if invalid_parameters or positional:
+            return jsonify({"ok": False, "error": f"{definition['name']} has unsupported arguments."}), 400
+        guild_snapshots = bot_guild_snapshot()
+        guild_id = str(payload.get("guild_id") or "").strip()
+        selected_guild = next((item for item in guild_snapshots if str(item.get("id")) == guild_id), None) if guild_id else None
+        if local_action == "help":
+            help_text = "Gargand PowerShell-style command library:\n" + "\n".join(
+                f"{item['name']:<34} {item['description']}" for item in TERMINAL_COMMANDS
+            ) + "\n\nUse -ServerId <id> or select a server above. Use -Message \"words here\" for announcements."
+            return jsonify({"ok": True, "message": help_text, "clear": False})
+        if local_action == "clear":
+            return jsonify({"ok": True, "message": "", "clear": True})
+        if local_action == "servers":
+            lines = [f"Gargand is {'online' if bot_online() else 'offline'} · {len(guild_snapshots)} server(s) in the latest snapshot."]
+            lines.extend(
+                f"{guild.get('name') or 'Discord server'} · {guild.get('member_count') or 0} members · ID {guild.get('id')} · invite {guild.get('invite_status') or 'unknown'}"
+                for guild in guild_snapshots
+            )
+            return jsonify({"ok": True, "message": "\n".join(lines) or "No server snapshot has arrived yet."})
+        if local_action == "commands":
+            commands = all_commands()
+            category = str(parameters.get("category") or "").strip().casefold()
+            if category:
+                commands = [item for item in commands if item["category"].casefold() == category]
+            try:
+                limit = max(1, min(150, int(parameters.get("limit", 100))))
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "-Limit must be a number from 1 to 150."}), 400
+            shown = commands[:limit]
+            lines = [f"{len(commands)} command(s) match; showing {len(shown)}:"]
+            lines.extend(f"{item['command']} [{item['category']}] · {item['description']}" for item in shown)
+            if len(commands) > len(shown):
+                lines.append(f"More available. Run Get-GargandCommands -Limit {min(150, len(commands))} or filter with -Category.")
+            return jsonify({"ok": True, "message": "\n".join(lines)})
+        if local_action in {"top_commands", "errors", "recent_reports", "usage"}:
+            if not DATABASE_URL:
+                return jsonify({"ok": False, "error": "Usage and report history need the website database."}), 503
+            if local_action == "usage":
+                try:
+                    days = max(1, min(30, int(parameters.get("days", 7))))
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": "-Days must be a number from 1 to 30."}), 400
+                try:
+                    with db_connect() as conn:
+                        rows = conn.execute(
+                            "SELECT event_type,COUNT(*) FROM bot_telemetry "
+                            "WHERE created_at >= NOW() - (%s * INTERVAL '1 day') "
+                            "AND event_type IN ('command_used','command_error','component_used','report_submitted','ticket_created','member_joined') "
+                            "GROUP BY event_type", (days,)
+                        ).fetchall()
+                    counts = {str(row[0]): int(row[1] or 0) for row in rows}
+                    labels = (
+                        ("command_used", "commands"), ("command_error", "command errors"),
+                        ("component_used", "button/select/modal uses"), ("report_submitted", "reports"),
+                        ("ticket_created", "tickets opened"), ("member_joined", "server joins"),
+                    )
+                    return jsonify({"ok": True, "message": f"Gargand usage · last {days} day(s)\n" + "\n".join(f"{label}: {counts.get(key, 0)}" for key, label in labels)})
+                except psycopg.Error as exc:
+                    app.logger.warning("Could not read terminal usage summary: %s", type(exc).__name__)
+                    return jsonify({"ok": False, "error": "Usage summary is temporarily unavailable."}), 503
+            try:
+                limit = max(1, min(30 if local_action in {"errors", "recent_reports"} else 20, int(parameters.get("limit", 10))))
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "-Limit must be a number from 1 to 30."}), 400
+            try:
+                with db_connect() as conn:
+                    if local_action == "top_commands":
+                        rows = conn.execute(
+                            "SELECT command_name,COUNT(*) FROM bot_telemetry "
+                            "WHERE event_type='command_used' AND created_at >= NOW() - INTERVAL '7 days' "
+                            "AND command_name<>'' GROUP BY command_name ORDER BY COUNT(*) DESC,command_name ASC LIMIT %s",
+                            (limit,),
+                        ).fetchall()
+                        message = "Most-used Gargand commands · last 7 days\n" + "\n".join(
+                            f"{index}. {row[0]} · {int(row[1] or 0)} use(s)" for index, row in enumerate(rows, 1)
+                        )
+                        if not rows:
+                            message += "No command activity has been recorded yet."
+                    elif local_action == "errors":
+                        rows = conn.execute(
+                            "SELECT username,guild_name,command_name,created_at FROM bot_telemetry "
+                            "WHERE event_type='command_error' ORDER BY id DESC LIMIT %s", (limit,),
+                        ).fetchall()
+                        message = "Recent failed commands (arguments are not shown):\n" + "\n".join(
+                            f"{row[3].strftime('%H:%M:%S UTC') if hasattr(row[3], 'strftime') else row[3]} · {str(row[0] or 'Unknown user')[:80]} · {str(row[2] or 'unknown command')[:80]} · {str(row[1] or 'DM')}"
+                            for row in rows
+                        )
+                        if not rows:
+                            message += "No command errors recorded."
+                    else:
+                        rows = conn.execute(
+                            "SELECT report_id,reporter_name,guild_name,status,created_at FROM bot_reports ORDER BY report_id DESC LIMIT %s",
+                            (limit,),
+                        ).fetchall()
+                        message = "Recent reports (private report details are hidden):\n" + "\n".join(
+                            f"#{row[0]} · {str(row[1] or 'Unknown reporter')[:80]} · {str(row[2] or 'DM')[:80]} · {str(row[3] or 'open')} · {row[4].strftime('%H:%M:%S UTC') if hasattr(row[4], 'strftime') else row[4]}"
+                            for row in rows
+                        )
+                        if not rows:
+                            message += "No reports have been submitted yet."
+                return jsonify({"ok": True, "message": message})
+            except psycopg.Error as exc:
+                app.logger.warning("Could not read terminal history data: %s", type(exc).__name__)
+                return jsonify({"ok": False, "error": "Terminal history is temporarily unavailable."}), 503
+        if local_action in {"channels", "roles", "invite", "members", "configuration", "server_health", "music", "community", "notifications", "server_audit"}:
+            requested_guild_id = str(parameters.get("serverid") or parameters.get("guildid") or guild_id).strip()
+            if not requested_guild_id.isdigit() or not 17 <= len(requested_guild_id) <= 22:
+                return jsonify({"ok": False, "error": "Select a server or pass -ServerId <id>."}), 400
+            if guild_id and requested_guild_id != guild_id:
+                return jsonify({"ok": False, "error": "The selected server and -ServerId must match."}), 400
+            selected_guild = next((item for item in guild_snapshots if str(item.get("id")) == requested_guild_id), None)
+            if not selected_guild:
+                return jsonify({"ok": False, "error": "That server is not in Gargand's latest snapshot."}), 404
+            if local_action == "channels":
+                channels = selected_guild.get("channels") if isinstance(selected_guild.get("channels"), list) else []
+                lines = [f"{selected_guild.get('name')} · {len(channels)} visible channels"]
+                lines.extend(f"#{item.get('name')} · ID {item.get('id')}" for item in channels[:150])
+                return jsonify({"ok": True, "message": "\n".join(lines)})
+            if local_action == "roles":
+                roles = selected_guild.get("roles") if isinstance(selected_guild.get("roles"), list) else []
+                lines = [f"{selected_guild.get('name')} · {len(roles)} roles"]
+                lines.extend(f"@{item.get('name')} · ID {item.get('id')}" for item in roles[:150])
+                return jsonify({"ok": True, "message": "\n".join(lines)})
+            if local_action == "invite":
+                invite = str(selected_guild.get("invite_url") or "")
+                return jsonify({"ok": True, "message": invite or f"No invite available ({selected_guild.get('invite_status') or 'unknown'})."})
+            if local_action == "members":
+                return jsonify({"ok": True, "message": f"{selected_guild.get('name')} has {int(selected_guild.get('member_count') or 0):,} members."})
+            if local_action in {"server_health", "music", "community", "notifications", "server_audit"}:
+                snapshot_key = {
+                    "server_health": "health", "music": "music", "community": "community",
+                    "notifications": "notifications", "server_audit": "audit",
+                }[local_action]
+                value = selected_guild.get(snapshot_key)
+                if not value:
+                    return jsonify({"ok": True, "message": f"No {snapshot_key} snapshot is available for {selected_guild.get('name')} yet."})
+                serialized = json.dumps(value, ensure_ascii=False, indent=2, default=str)[:7000]
+                return jsonify({"ok": True, "message": f"{selected_guild.get('name')} · {snapshot_key.title()} snapshot\n{serialized}"})
+            settings = selected_guild.get("settings") if isinstance(selected_guild.get("settings"), dict) else {}
+            safe_keys = ("prefix", "logs_channel_id", "announcement_channel_id", "welcome_channel_id", "ticket_panel_channel_id", "anti_raid", "anti_nuke", "automod_spam", "xp_enabled")
+            lines = [f"Safe settings snapshot for {selected_guild.get('name')}:"]
+            lines.extend(f"{key}: {settings.get(key, 'not set')}" for key in safe_keys)
+            return jsonify({"ok": True, "message": "\n".join(lines)})
+        if local_action == "activity":
+            if not DATABASE_URL:
+                return jsonify({"ok": False, "error": "Activity history needs the website database."}), 503
+            try:
+                limit = max(1, min(50, int(parameters.get("limit", 20))))
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "-Limit must be a number from 1 to 50."}), 400
+            try:
+                with db_connect() as conn:
+                    rows = conn.execute(
+                        "SELECT id,event_type,guild_id,guild_name,user_id,username,command_name,metadata,created_at "
+                        "FROM bot_telemetry ORDER BY id DESC LIMIT %s", (limit,)
+                    ).fetchall()
+                events = [_console_activity_item(row) for row in reversed(rows)]
+            except psycopg.Error as exc:
+                app.logger.warning("Could not read terminal activity: %s", type(exc).__name__)
+                return jsonify({"ok": False, "error": "Activity history is temporarily unavailable."}), 503
+            return jsonify({"ok": True, "message": "\n".join(f"{event['time']} · {event['user']} {event['description']} · {event['server']}" for event in events) or "No activity has been recorded yet."})
+        if local_action == "reports":
+            if not DATABASE_URL:
+                return jsonify({"ok": False, "error": "Report counts need the website database."}), 503
+            try:
+                with db_connect() as conn:
+                    rows = conn.execute("SELECT status,COUNT(*) FROM bot_reports GROUP BY status").fetchall()
+                counts = {str(row[0]): int(row[1] or 0) for row in rows}
+                return jsonify({"ok": True, "message": "Report inbox: " + " · ".join(f"{status}: {counts.get(status, 0)}" for status in ("open", "reviewing", "resolved", "dismissed"))})
+            except psycopg.Error as exc:
+                app.logger.warning("Could not read terminal report counts: %s", type(exc).__name__)
+                return jsonify({"ok": False, "error": "Report counts are temporarily unavailable."}), 503
+        if local_action == "history":
+            if not DATABASE_URL:
+                return jsonify({"ok": False, "error": "Command history needs the website database."}), 503
+            try:
+                with db_connect() as conn:
+                    rows = conn.execute(
+                        "SELECT command,guild_name,actor_name,status,message,created_at FROM admin_console_runs ORDER BY created_at DESC LIMIT 20"
+                    ).fetchall()
+                lines = [f"{row[5].strftime('%H:%M:%S UTC') if hasattr(row[5], 'strftime') else row[5]} · {row[2]} · {row[1]} · {row[0]} · {row[3]}" for row in rows]
+                return jsonify({"ok": True, "message": "\n".join(lines) or "No terminal history yet."})
+            except psycopg.Error as exc:
+                app.logger.warning("Could not read terminal history: %s", type(exc).__name__)
+                return jsonify({"ok": False, "error": "Command history is temporarily unavailable."}), 503
+        if local_action == "bridge":
+            online = bot_online()
+            return jsonify({"ok": True, "message": f"Website database: {'connected' if DATABASE_URL else 'not configured'}\nGargand heartbeat: {'online' if online else 'offline'}\nLatest server snapshot: {len(guild_snapshots)} server(s)"})
+
+    if not DATABASE_URL:
+        return jsonify({"ok": False, "error": "The website database is required to queue and audit server actions."}), 503
+    if not bot_online():
+        return jsonify({"ok": False, "error": "Gargand is offline. Bring the bot online before running a server action."}), 503
+    guild_id = str(payload.get("guild_id") or parameters.get("serverid") or parameters.get("guildid") or "").strip()
+    if not guild_id.isdigit() or not 17 <= len(guild_id) <= 22:
+        return jsonify({"ok": False, "error": "Select a server or pass -ServerId <id>."}), 400
+    selected_guild_id = str(payload.get("guild_id") or "").strip()
+    if selected_guild_id and str(parameters.get("serverid") or parameters.get("guildid") or selected_guild_id) != selected_guild_id:
+        return jsonify({"ok": False, "error": "The selected server and -ServerId must match."}), 400
     guild = next((item for item in bot_guild_snapshot() if str(item.get("id")) == guild_id), None)
     if not guild:
         return jsonify({"ok": False, "error": "That server is not in Gargand's latest heartbeat."}), 404
-    command_parts = clean_command.split(maxsplit=1)
-    command_name = command_parts[0].lstrip("!/").casefold()
-    argument = command_parts[1].strip() if len(command_parts) > 1 else ""
-    if command_name == "help":
-        return jsonify({"ok": True, "message": "Supported commands: /status, /refresh, /announce <message>. These run through Gargand's allowlisted admin actions."})
-    if command_name not in {"status", "refresh", "announce"}:
-        return jsonify({"ok": False, "error": "Supported commands: /status, /refresh, /announce <message>."}), 400
-    if command_name == "announce" and not argument:
-        return jsonify({"ok": False, "error": "Add announcement text after /announce."}), 400
-    if command_name != "announce" and argument:
-        return jsonify({"ok": False, "error": f"/{command_name} does not take arguments."}), 400
-    if len(argument) > 1600:
+    action = definition.get("action")
+    allowed_action_parameters = {"serverid", "guildid", "message"} if action == "announce" else {"serverid", "guildid"}
+    if set(parameters) - allowed_action_parameters:
+        return jsonify({"ok": False, "error": f"{definition['name']} has unsupported parameters."}), 400
+    argument = str(parameters.get("message") or "").strip()
+    if action == "announce" and not argument:
+        argument = " ".join(positional).strip()
+    if action == "announce" and not argument:
+        return jsonify({"ok": False, "error": 'Add an announcement using -Message "Your message here".'}), 400
+    if action != "announce" and (positional or any(key != "serverid" and key != "guildid" for key in parameters)):
+        return jsonify({"ok": False, "error": f"{definition['name']} does not accept those arguments."}), 400
+    if action == "announce" and len(argument) > 1600:
         return jsonify({"ok": False, "error": "Announcements are limited to 1,600 characters."}), 400
 
     actor = session.get("user") or {}
     actor_id = str(actor.get("id") or "")
     actor_name = str(actor.get("global_name") or actor.get("username") or "Gargand admin")[:120]
-    job_payload = {"action": command_name, "requested_by": actor_id, "requested_by_name": actor_name}
-    if command_name == "announce":
+    job_payload = {"action": action, "requested_by": actor_id, "requested_by_name": actor_name}
+    if action == "announce":
         job_payload["message"] = argument
     try:
         with db_connect() as conn:
@@ -1468,7 +1850,7 @@ def admin_console_command():
         return jsonify({"ok": False, "error": "The command could not be queued. Try again."}), 503
     record_bot_event(
         "admin_console_queued", guild_id=guild_id, guild_name=str(guild.get("name") or ""),
-        user_id=actor_id, username=actor_name, command_name=command_name,
+        user_id=actor_id, username=actor_name, command_name=definition["name"],
         metadata={"job_id": int(job_id), "command": clean_command[:500]},
     )
     return jsonify({"ok": True, "job_id": int(job_id), "message": "Command queued for Gargand."})

@@ -1,84 +1,188 @@
 {% extends "base.html" %}
-{% block title %}Gargand • Admin command console{% endblock %}
+{% block title %}Gargand • Admin PowerShell Console{% endblock %}
 {% block content %}
 <section class="page-head control-admin-hero">
-  <span class="eyebrow">PRIVATE ADMIN · BOT CONTROL</span>
-  <h1>Command console.</h1>
-  <p>Run a small set of audited actions against a server Gargand is connected to. Every request and result is saved to the activity history.</p>
+  <span class="eyebrow">PRIVATE ADMIN · LIVE BOT CONTROL</span>
+  <h1>Gargand Control Console.</h1>
+  <p>Run PowerShell-style Gargand commands, inspect server data, and watch bot activity appear live.</p>
   <div class="control-hero-actions"><a class="gg-button gg-button-dark" href="/admin/panel">Admin home</a><a class="gg-button gg-button-dark" href="/admin/audit">Activity audit</a><a class="gg-button gg-button-dark" href="/admin/reports">Report inbox</a></div>
 </section>
-<section class="control-console-layout" id="gargandConsole" data-csrf="{{ csrf_token }}">
-  <article class="control-console-panel">
-    <div class="control-console-title"><div><span class="gg-kicker">GARGAND ADMIN CONSOLE</span><h2>Run an action</h2></div><span class="control-live-indicator {% if bot_online %}online{% endif %}">{% if bot_online %}BOT ONLINE{% else %}BOT OFFLINE{% endif %}</span></div>
-    <p class="control-console-description">Commands are restricted to this list. This input cannot run shell commands or arbitrary Python.</p>
-    <div class="control-command-shortcuts"><button type="button" data-command="/status">/status</button><button type="button" data-command="/refresh">/refresh</button><button type="button" data-command="/announce ">/announce</button><button type="button" data-command="/help">/help</button></div>
-    <form id="gargandConsoleForm" class="control-console-form">
-      <label>Server<select name="guild_id" required {% if not guilds or not bot_online %}disabled{% endif %}><option value="">Choose a server…</option>{% for guild in guilds %}<option value="{{ guild.id }}">{{ guild.name }}</option>{% endfor %}</select></label>
-      <label class="control-terminal-label">Command<div class="control-terminal-input"><span aria-hidden="true">›</span><input name="command" type="text" maxlength="1800" placeholder="/status" autocomplete="off" spellcheck="false" required {% if not guilds or not bot_online %}disabled{% endif %}></div></label>
-      <button class="gg-button gg-button-bright" type="submit" {% if not guilds or not bot_online %}disabled{% endif %}>Run command ↗</button>
+
+<div id="gargandActivityToasts" class="control-activity-toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<section class="control-console-layout control-terminal-layout" id="gargandConsole" data-csrf="{{ csrf_token }}" data-activity-cursor="{{ activity_cursor }}">
+  <article class="control-console-panel control-terminal-panel">
+    <div class="control-console-title"><div><span class="gg-kicker">GARGAND POWERSHELL</span><h2>Admin terminal</h2></div><span class="control-live-indicator {% if bot_online %}online{% endif %}">{% if bot_online %}BOT ONLINE{% else %}BOT OFFLINE · READ MODE AVAILABLE{% endif %}</span></div>
+    <p class="control-console-description">Use the Gargand command library below. Server actions run only built-in commands and are recorded with the requesting admin.</p>
+    <div class="control-command-shortcuts" aria-label="Command shortcuts"><button type="button" data-command="Get-Help">Get-Help</button><button type="button" data-command="Get-GargandStatus">Get-GargandStatus</button><button type="button" data-command="Get-GargandServers">Get-GargandServers</button><button type="button" data-command="Get-GargandActivity -Limit 10">Get-GargandActivity</button><button type="button" data-command="Get-GargandRecentReports -Limit 10">Get-GargandRecentReports</button><button type="button" data-command="Get-GargandPopularCommands -Limit 10">Get-GargandPopularCommands</button><button type="button" data-command="Clear-Host">Clear-Host</button></div>
+    <form id="gargandConsoleForm" class="control-console-form control-terminal-form">
+      <label>Server context<select name="guild_id"><option value="">All servers / select below</option>{% for guild in guilds %}<option value="{{ guild.id }}">{{ guild.name }} · {{ guild.id }}</option>{% endfor %}</select></label>
+      <label class="control-terminal-label">Command<div class="control-terminal-input"><span id="gargandTerminalPrompt" class="terminal-prompt">PS Gargand&gt;</span><input name="command" type="text" maxlength="1800" list="terminalCommandSuggestions" placeholder="Get-GargandStatus" autocomplete="off" spellcheck="false" aria-label="PowerShell-style Gargand command"></div><datalist id="terminalCommandSuggestions">{% for command in terminal_commands %}<option value="{{ command.name }}">{{ command.description }}</option>{% endfor %}</datalist></label>
+      <button class="gg-button gg-button-bright" type="submit">Invoke ↵</button>
     </form>
-    {% if not guilds %}<p class="control-inline-error">No server snapshot has arrived. Start the bot bridge before running commands.</p>{% elif not bot_online %}<p class="control-inline-error">Gargand is offline. The console will unlock after its next heartbeat.</p>{% endif %}
-    <div class="control-command-help"><h3>Available commands</h3><ul><li><code>/status</code> · Read Gargand's status for the selected server.</li><li><code>/refresh</code> · Refresh the saved setup dashboard in the selected server.</li><li><code>/announce &lt;message&gt;</code> · Post to that server's configured announcement channel. Mentions are disabled.</li></ul><p>Set an announcement channel in the server dashboard before using <code>/announce</code>.</p></div>
-    <div id="gargandConsoleOutput" class="control-console-output" role="status" aria-live="polite"><span class="control-output-placeholder">Ready. Choose a server and run <code>/help</code> to see the command list.</span></div>
+    {% if not guilds %}<p class="control-inline-error">The bot has not sent a server snapshot yet. Help and the command catalog are still available.</p>{% endif %}
+    {% if error %}<p class="control-inline-error">{{ error }}</p>{% endif %}
+    <div id="gargandConsoleOutput" class="control-console-output control-terminal-output" role="log" aria-live="polite"><p class="control-output-placeholder">Ready. Run <code>Get-Help</code> to see commands.</p></div>
+    <div class="control-terminal-foot"><span>Enter runs · ↑ / ↓ command history · Ctrl+L clears output</span><span>Gargand built-ins only</span></div>
   </article>
-  <aside class="control-console-aside"><span class="gg-kicker">SAFE BY DESIGN</span><h2>Actions with a clear scope.</h2><p>Every command targets one selected Discord server. Gargand runs only built-in actions, records who requested them, and returns a completion status.</p><div class="control-console-status-row"><span>Website audit</span><strong>Enabled</strong></div><div class="control-console-status-row"><span>Arbitrary shell</span><strong>Disabled</strong></div><div class="control-console-status-row"><span>Mass mentions</span><strong>Blocked</strong></div></aside>
+
+  <aside class="control-console-aside control-live-activity-panel">
+    <div class="control-activity-heading"><div><span class="gg-kicker">LIVE EVENT STREAM</span><h2>What people do with Gargand</h2></div><span class="control-activity-pulse" aria-label="Live updates"></span></div>
+    <p class="control-console-description">New commands and bot interactions pop up here as they happen. Message contents are not recorded.</p>
+    <div id="gargandActivityFeed" class="control-activity-feed" aria-live="polite" aria-relevant="additions text">
+      {% for event in activity %}<article class="control-activity-event" data-event-id="{{ event.id }}"><strong>{{ event.user }}</strong><span>{{ event.description }}</span><small>{{ event.server }} · {{ event.time }}</small></article>{% else %}<div class="control-activity-empty">Waiting for Gargand activity…</div>{% endfor %}
+    </div>
+  </aside>
 </section>
+
+<section class="control-terminal-command-library">
+  <div class="control-section-heading"><div><span class="gg-kicker">BUILT-IN COMMANDS</span><h2>Terminal command library</h2></div><p>{{ terminal_commands|length }} commands · select a server for actions that change Discord.</p></div>
+  <div class="control-terminal-command-grid">
+    {% for command in terminal_commands %}<article><code>{{ command.name }}</code><p>{{ command.description }}</p></article>{% endfor %}
+  </div>
+  <p class="control-terminal-examples">Examples: <code>Get-GargandChannels</code> · <code>Get-GargandCommands -Category Moderation</code> · <code>Get-GargandUsageSummary -Days 7</code> · <code>Get-GargandRecentReports -Limit 10</code> · <code>Send-GargandAnnouncement -Message "Server event at 7 PM"</code> · <code>Start-GargandRaidLockdown</code></p>
+</section>
+
 <section class="control-console-history">
-  <div class="control-section-heading"><div><span class="gg-kicker">RECENT ACTIVITY</span><h2>Command history</h2></div><p>Latest audited console requests.</p></div>
-  {% if error %}<p class="control-inline-error">{{ error }}</p>{% endif %}
+  <div class="control-section-heading"><div><span class="gg-kicker">AUDITED ADMIN ACTIONS</span><h2>Terminal history</h2></div><p>Server actions show the requester and completion result.</p></div>
   <div class="control-run-list">
-    {% for run in runs %}<article><div><code>{{ run.command }}</code><p>{{ run.guild_name }} · requested by {{ run.actor_name or run.actor_id }} · {{ run.created_at }}</p></div><div class="control-run-result"><span class="control-status-chip {{ run.status }}">{{ run.status|capitalize }}</span>{% if run.message %}<p>{{ run.message }}</p>{% endif %}</div></article>{% else %}<div class="control-empty-state"><span>⌘</span><h2>No commands run yet</h2><p>Finished and pending commands will appear here.</p></div>{% endfor %}
+    {% for run in runs %}<article><div><code>{{ run.command }}</code><p>{{ run.guild_name }} · requested by {{ run.actor_name or run.actor_id }} · {{ run.created_at }}</p></div><div class="control-run-result"><span class="control-status-chip {{ run.status }}">{{ run.status|capitalize }}</span>{% if run.message %}<p>{{ run.message }}</p>{% endif %}</div></article>{% else %}<div class="control-empty-state"><span>⌘</span><h2>No terminal actions run yet</h2><p>Queued server actions will appear here.</p></div>{% endfor %}
   </div>
 </section>
+
 <script>
 (function () {
   const root = document.getElementById('gargandConsole');
   const form = document.getElementById('gargandConsoleForm');
   const output = document.getElementById('gargandConsoleOutput');
-  if (!root || !form || !output) return;
+  const feed = document.getElementById('gargandActivityFeed');
+  const toastRoot = document.getElementById('gargandActivityToasts');
+  const prompt = document.getElementById('gargandTerminalPrompt');
+  if (!root || !form || !output || !feed || !toastRoot) return;
   const input = form.elements.command;
-  function line(text, state) {
-    const item = document.createElement('p');
+  const serverSelect = form.elements.guild_id;
+  const commandHistory = [];
+  let historyIndex = 0;
+  let activityCursor = root.dataset.activityCursor || '0';
+  let activityRequestPending = false;
+
+  function addOutput(text, state) {
+    const placeholder = output.querySelector('.control-output-placeholder');
+    if (placeholder) placeholder.remove();
+    const item = document.createElement('pre');
     item.className = 'control-output-line' + (state ? ' ' + state : '');
     item.textContent = text;
-    output.prepend(item);
-    while (output.children.length > 8) output.lastElementChild.remove();
+    output.appendChild(item);
+    while (output.children.length > 80) output.firstElementChild.remove();
+    output.scrollTop = output.scrollHeight;
   }
+
+  function clearOutput() {
+    output.replaceChildren();
+    const placeholder = document.createElement('span');
+    placeholder.className = 'control-output-placeholder';
+    placeholder.textContent = 'Terminal cleared.';
+    output.appendChild(placeholder);
+  }
+
+  function setPrompt() {
+    const option = serverSelect.options[serverSelect.selectedIndex];
+    const server = option && option.value ? option.text.split(' · ')[0] : 'Gargand';
+    prompt.textContent = 'PS ' + server + '>';
+  }
+
   document.querySelectorAll('.control-command-shortcuts button').forEach(function (button) {
     button.addEventListener('click', function () { input.value = button.dataset.command || ''; input.focus(); });
   });
+  serverSelect.addEventListener('change', setPrompt);
+  setPrompt();
+
+  input.addEventListener('keydown', function (event) {
+    if (event.ctrlKey && event.key.toLowerCase() === 'l') { event.preventDefault(); clearOutput(); return; }
+    if (event.key === 'ArrowUp' && commandHistory.length) {
+      event.preventDefault(); historyIndex = Math.max(0, historyIndex - 1); input.value = commandHistory[historyIndex] || ''; return;
+    }
+    if (event.key === 'ArrowDown' && commandHistory.length) {
+      event.preventDefault(); historyIndex = Math.min(commandHistory.length, historyIndex + 1); input.value = commandHistory[historyIndex] || '';
+    }
+  });
+
   async function poll(jobId, attempt) {
-    if (attempt > 24) { line('Still queued. Check command history in a moment.', 'pending'); return; }
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (attempt > 30) { addOutput('Still queued. Check Terminal history in a moment.', 'pending'); return; }
+    await new Promise(resolve => setTimeout(resolve, 1200));
     try {
       const response = await fetch('/api/admin/console/jobs/' + encodeURIComponent(jobId), { credentials: 'same-origin' });
       const data = await response.json();
-      if (!response.ok || !data.ok) { line(data.error || 'Could not read command status.', 'failed'); return; }
+      if (!response.ok || !data.ok) { addOutput(data.error || 'Could not read command status.', 'failed'); return; }
       if (data.status === 'pending') { await poll(jobId, attempt + 1); return; }
-      line((data.status === 'success' ? '✓ ' : '× ') + data.message, data.status);
-    } catch (_) { line('Command was queued, but its status could not be loaded.', 'failed'); }
+      addOutput((data.status === 'success' ? '✓ ' : '× ') + data.message, data.status);
+    } catch (_) { addOutput('The command was queued, but its result could not be loaded.', 'failed'); }
   }
+
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     const button = form.querySelector('button[type="submit"]');
     const command = input.value.trim();
-    const guildId = form.elements.guild_id.value;
-    if (!command || !guildId) return;
-    line('› ' + command, 'command');
+    if (!command) return;
+    commandHistory.push(command);
+    historyIndex = commandHistory.length;
+    addOutput(prompt.textContent + ' ' + command, 'command');
+    if (/^(?:clear-host|clear|cls)$/i.test(command)) { clearOutput(); return; }
     button.disabled = true;
     try {
       const response = await fetch('/api/admin/console/commands', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-        body: JSON.stringify({ csrf_token: root.dataset.csrf, command: command, guild_id: guildId })
+        body: JSON.stringify({ csrf_token: root.dataset.csrf, command: command, guild_id: serverSelect.value })
       });
       const data = await response.json();
-      if (!response.ok || !data.ok) { line(data.error || 'Command was not accepted.', 'failed'); return; }
-      if (data.job_id) { line('Queued for Gargand…', 'pending'); await poll(data.job_id, 0); }
-      else { line(data.message || 'Ready.', 'success'); }
+      if (!response.ok || !data.ok) { addOutput(data.error || 'Command was not accepted.', 'failed'); return; }
+      if (data.clear) { clearOutput(); return; }
+      if (data.job_id) { addOutput('Queued for Gargand…', 'pending'); await poll(data.job_id, 0); }
+      else { addOutput(data.message || 'Command completed.', 'success'); }
       input.value = '';
-    } catch (_) { line('Could not reach the admin console. Refresh and try again.', 'failed'); }
-    finally { button.disabled = false; }
+    } catch (_) { addOutput('Could not reach the terminal service. Refresh and try again.', 'failed'); }
+    finally { button.disabled = false; input.focus(); }
   });
+
+  function createActivityNode(eventData) {
+    const card = document.createElement('article');
+    card.className = 'control-activity-event';
+    card.dataset.eventId = eventData.id || '';
+    const user = document.createElement('strong'); user.textContent = eventData.user || 'Someone';
+    const description = document.createElement('span'); description.textContent = eventData.description || 'used Gargand';
+    const details = document.createElement('small'); details.textContent = (eventData.server || 'Unknown server') + ' · ' + (eventData.time || 'now');
+    card.append(user, description, details);
+    return card;
+  }
+
+  function showActivityToast(eventData) {
+    const toast = createActivityNode(eventData);
+    toast.classList.add('control-activity-toast');
+    toastRoot.appendChild(toast);
+    window.setTimeout(function () { toast.classList.add('leaving'); window.setTimeout(() => toast.remove(), 300); }, 7000);
+    while (toastRoot.children.length > 4) toastRoot.firstElementChild.remove();
+  }
+
+  async function pollActivity() {
+    if (activityRequestPending || document.hidden) return;
+    activityRequestPending = true;
+    try {
+      const response = await fetch('/api/admin/console/activity?after=' + encodeURIComponent(activityCursor), { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !data.ok) return;
+      (data.events || []).forEach(function (item) {
+        feed.querySelector('.control-activity-empty')?.remove();
+        const card = createActivityNode(item);
+        feed.prepend(card);
+        while (feed.children.length > 30) feed.lastElementChild.remove();
+        showActivityToast(item);
+      });
+      activityCursor = data.cursor || activityCursor;
+    } catch (_) { /* The next poll retries without interrupting the terminal. */ }
+    finally { activityRequestPending = false; }
+  }
+  window.setInterval(pollActivity, 2500);
+  document.addEventListener('visibilitychange', pollActivity);
 })();
 </script>
 {% endblock %}
