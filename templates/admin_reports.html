@@ -5,8 +5,9 @@
   <span class="eyebrow">PRIVATE ADMIN · TRUST &amp; SAFETY</span>
   <h1>Report inbox.</h1>
   <p>Review private reports members send to Gargand in Discord DMs.</p>
-  <div class="control-hero-actions"><a class="gg-button gg-button-dark" href="/admin/panel">Admin home</a><a class="gg-button gg-button-dark" href="/admin/audit">Activity audit</a><a class="gg-button gg-button-dark" href="/admin/console">Command console</a></div>
+  <div class="control-hero-actions"><a class="gg-button gg-button-dark" href="/admin/panel">Admin home</a><a class="gg-button gg-button-dark" href="/admin/audit">Activity audit</a><a class="gg-button gg-button-dark" href="/admin/console">Command console</a><a class="gg-button gg-button-dark" href="/scam-watchlist">Public Scam Watchlist ↗</a></div>
 </section>
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="scam-watch-flash {{ category }}" role="status">{{ message }}</p>{% endfor %}{% endwith %}
 <section class="control-report-summary" aria-label="Report status counts">
   {% for status in ["open", "reviewing", "resolved", "dismissed"] %}
   <a class="control-report-count {{ status }}" href="/admin/reports?status={{ status }}"><span>{{ status|capitalize }}</span><strong>{{ summary.get(status, 0) }}</strong></a>
@@ -24,6 +25,22 @@
     <header><div><span class="control-report-id">REPORT #{{ report.report_id }}</span><h2>{{ report.guild_name }}</h2><p>{% if report.guild_id %}Server ID {{ report.guild_id }} · {% endif %}{{ report.created_at }}</p></div><span class="control-status-chip {{ report.status }}">{{ report.status|replace('_', ' ')|capitalize }}</span></header>
     <div class="control-report-meta"><span><small>REPORTED BY</small><strong>{{ report.reporter_name or report.reporter_id }}</strong><a href="https://discord.com/users/{{ report.reporter_id }}" target="_blank" rel="noopener noreferrer">Open Discord profile ↗</a></span>{% if report.target %}<span><small>PERSON / TARGET</small><strong>{{ report.target }}</strong></span>{% endif %}</div>
     <div class="control-report-details"><small>WHAT HAPPENED</small><p>{{ report.details }}</p></div>
+    <section class="scam-watch-admin-box" aria-label="Public Scam Watchlist controls">
+      <div><span class="gg-kicker">PUBLIC SAFETY LISTING</span><h3>Scam Watchlist</h3><p>Only publish a reviewed account. The private report and reporter details stay in this admin inbox.</p></div>
+      {% if report.watchlist_entry %}
+      <div class="scam-watch-listed"><span>Published account · <code>{{ report.watchlist_entry.discord_user_id }}</code></span><form method="post" action="/admin/reports/{{ report.report_id }}/watchlist"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="browser_check" value="{{ browser_verification_token }}"><input type="hidden" name="action" value="remove"><input type="hidden" name="return_status" value="{{ selected_status }}"><button class="gg-button gg-button-dark" type="submit">Remove public listing</button></form></div>
+      {% else %}
+      <p class="scam-watch-review-gate">Mark this report <strong>Reviewing</strong> or <strong>Resolved</strong> and save it before publishing.</p>
+      <form class="scam-watch-publish-form" method="post" action="/admin/reports/{{ report.report_id }}/watchlist">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="browser_check" value="{{ browser_verification_token }}"><input type="hidden" name="action" value="add"><input type="hidden" name="return_status" value="{{ selected_status }}">
+        <label>Reported Discord user ID<input name="discord_user_id" inputmode="numeric" minlength="17" maxlength="22" pattern="[0-9]{17,22}" placeholder="17–22 digit user ID" required></label>
+        <label>Public display name<input name="display_name" maxlength="100" value="{{ report.target }}" placeholder="Reported account name" required></label>
+        <label class="scam-watch-summary-input">Public safety note<textarea name="public_summary" minlength="20" maxlength="500" placeholder="Write a short, factual warning. Do not paste the private report or include personal information." required></textarea></label>
+        <label class="scam-watch-confirm"><input type="checkbox" name="reviewed" value="yes" required><span>I reviewed this report and checked that the public note contains no private report details.</span></label>
+        <button class="gg-button gg-button-bright" type="submit" {% if report.status not in ["reviewing", "resolved"] %}disabled{% endif %}>Publish reviewed account</button>
+      </form>
+      {% endif %}
+    </section>
     <form class="control-report-update" method="post" action="/admin/reports/{{ report.report_id }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="browser_check" value="{{ browser_verification_token }}"><input type="hidden" name="return_status" value="{{ selected_status }}">
       <label>Status<select name="status"><option value="open" {% if report.status == "open" %}selected{% endif %}>Open</option><option value="reviewing" {% if report.status == "reviewing" %}selected{% endif %}>Reviewing</option><option value="resolved" {% if report.status == "resolved" %}selected{% endif %}>Resolved</option><option value="dismissed" {% if report.status == "dismissed" %}selected{% endif %}>Dismissed</option></select></label>

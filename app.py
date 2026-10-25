@@ -19,7 +19,7 @@ from xml.etree import ElementTree as ET
 import requests
 from PIL import Image
 import psycopg
-from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 
 app = Flask(__name__)
 app.secret_key = (os.getenv("SESSION_SECRET") or os.getenv("ROBLOX_OAUTH_CLIENT_SECRET") or "").strip() or secrets.token_urlsafe(48)
@@ -378,7 +378,7 @@ def refresh_discord_session():
 @app.before_request
 def require_discord_for_site():
     # Public browsing is allowed. State-changing/private areas still require Discord.
-    public_get = {"/", "/commands", "/features", "/reports", "/planets", "/guidelines", "/announcements", "/suggestions", "/support", "/terms", "/socials", "/security", "/verification", "/gargand-lion.jpg", "/gargand-lion-4k.jpg", "/gargand-bar.gif"}
+    public_get = {"/", "/commands", "/features", "/reports", "/scam-watchlist", "/planets", "/guidelines", "/announcements", "/suggestions", "/support", "/terms", "/socials", "/security", "/verification", "/gargand-lion.jpg", "/gargand-lion-4k.jpg", "/gargand-bar.gif"}
     public_secret_api = set()
     public_bot_api = {"/api/bot/heartbeat", "/api/bot/pull", "/api/bot/announcements", "/api/bot/job-result", "/api/bot/status", "/api/bot/events", "/api/bot/reports"}
     endpoint = request.endpoint or ""
@@ -403,6 +403,8 @@ BOT_NEXT_JOB_ID = 1
 BOT_JOB_RESULTS = {}
 BOT_REPORTS = []
 BOT_NEXT_REPORT_ID = 1
+SCAM_WATCHLIST = []
+SCAM_WATCHLIST_NEXT_ID = 1
 
 
 def bot_online():
@@ -618,10 +620,18 @@ def admin_reports():
         selected_status = "open"
     reports = []
     summary = {status: 0 for status in REPORT_STATUSES}
+    watchlist_by_report = {}
     error = ""
     if DATABASE_URL:
         try:
             with db_connect() as conn:
+                watchlist_rows = conn.execute(
+                    "SELECT entry_id,source_report_id,discord_user_id FROM scam_watchlist WHERE source_report_id IS NOT NULL"
+                ).fetchall()
+                watchlist_by_report = {
+                    int(row[1]): {"entry_id": int(row[0]), "discord_user_id": str(row[2])}
+                    for row in watchlist_rows
+                }
                 for status in REPORT_STATUSES:
                     row = conn.execute("SELECT COUNT(*) FROM bot_reports WHERE status=%s", (status,)).fetchone()
                     summary[status] = int(row[0] or 0)
@@ -641,6 +651,7 @@ def admin_reports():
                 "target": str(row[5] or ""), "details": str(row[6] or ""), "status": str(row[7] or "open"),
                 "staff_note": str(row[8] or ""), "reviewed_by": str(row[9] or ""),
                 "created_at": row[10], "updated_at": row[11],
+                "watchlist_entry": watchlist_by_report.get(int(row[0])),
             } for row in rows]
         except psycopg.Error as exc:
             app.logger.warning("Could not load DM reports: %s", type(exc).__name__)
@@ -649,7 +660,10 @@ def admin_reports():
         for report in BOT_REPORTS:
             summary[report["status"]] = summary.get(report["status"], 0) + 1
             if selected_status == "all" or report["status"] == selected_status:
-                reports.append(dict(report))
+                item = dict(report)
+                listing = next((entry for entry in SCAM_WATCHLIST if int(entry.get("source_report_id") or 0) == int(report["report_id"])), None)
+                item["watchlist_entry"] = {"entry_id": listing["entry_id"], "discord_user_id": listing["discord_user_id"]} if listing else None
+                reports.append(item)
     return render_template(
         "admin_reports.html", reports=reports, summary=summary,
         selected_status=selected_status, error=error,
@@ -678,6 +692,8 @@ def admin_update_report(report_id):
                     "WHERE report_id=%s RETURNING guild_id,guild_name",
                     (status, staff_note, actor_id, report_id),
                 ).fetchone()
+                if row is not None and status not in {"reviewing", "resolved"}:
+                    conn.execute("DELETE FROM scam_watchlist WHERE source_report_id=%s", (report_id,))
             if row is None:
                 return "Report not found.", 404
             guild_id = row[0]
@@ -694,9 +710,139 @@ def admin_update_report(report_id):
         if report is None:
             return "Report not found.", 404
         report.update({"status": status, "staff_note": staff_note, "reviewed_by": actor_id, "updated_at": time.time()})
+        if status not in {"reviewing", "resolved"}:
+            SCAM_WATCHLIST[:] = [entry for entry in SCAM_WATCHLIST if int(entry.get("source_report_id") or 0) != report_id]
     return_status = str(request.form.get("return_status") or "open").strip().lower()
     if return_status not in REPORT_STATUSES | {"all"}:
         return_status = "open"
+    if return_status != "all" and return_status != status:
+        return_status = status
+    return redirect(url_for("admin_reports", status=return_status))
+
+
+@app.post("/admin/reports/<int:report_id>/watchlist")
+def admin_report_watchlist(report_id):
+    global SCAM_WATCHLIST_NEXT_ID
+    if not is_admin():
+        return redirect(url_for("admin_login"))
+    if not valid_admin_csrf():
+        return "Invalid session token. Refresh the page and try again.", 400
+
+    action = str(request.form.get("action") or "add").strip().lower()
+    return_status = str(request.form.get("return_status") or "all").strip().lower()
+    if return_status not in REPORT_STATUSES | {"all"}:
+        return_status = "all"
+    actor = session.get("user") or {}
+    actor_id = str(actor.get("id") or "")
+    actor_name = str(actor.get("global_name") or actor.get("username") or "Gargand admin")[:120]
+
+    if action == "remove":
+        if DATABASE_URL:
+            try:
+                with db_connect() as conn:
+                    listing = conn.execute(
+                        "DELETE FROM scam_watchlist WHERE source_report_id=%s RETURNING discord_user_id",
+                        (report_id,),
+                    ).fetchone()
+                    report = conn.execute("SELECT guild_id,guild_name FROM bot_reports WHERE report_id=%s", (report_id,)).fetchone()
+                if listing:
+                    record_bot_event(
+                        "scam_watchlist_removed", guild_id=report[0] if report else None,
+                        guild_name=str(report[1] or "") if report else "", user_id=actor_id,
+                        username=actor_name, command_name="scam watchlist",
+                        metadata={"report_id": report_id},
+                    )
+                    flash("The account was removed from the public Scam Watchlist.", "success")
+                else:
+                    flash("This report does not have a published watchlist entry.", "info")
+            except psycopg.Error as exc:
+                app.logger.warning("Could not remove scam watchlist entry: %s", type(exc).__name__)
+                flash("The public listing could not be removed. Try again.", "error")
+        else:
+            listing = next((entry for entry in SCAM_WATCHLIST if int(entry.get("source_report_id") or 0) == report_id), None)
+            SCAM_WATCHLIST[:] = [entry for entry in SCAM_WATCHLIST if int(entry.get("source_report_id") or 0) != report_id]
+            flash("The account was removed from the public Scam Watchlist." if listing else "This report does not have a published watchlist entry.", "success" if listing else "info")
+        return redirect(url_for("admin_reports", status=return_status))
+
+    if action != "add":
+        return "Choose a valid watchlist action.", 400
+    if request.form.get("reviewed") != "yes":
+        flash("Confirm that you reviewed this report before publishing an entry.", "error")
+        return redirect(url_for("admin_reports", status=return_status))
+
+    discord_user_id = str(request.form.get("discord_user_id") or "").strip()
+    display_name = str(request.form.get("display_name") or "").strip()[:100]
+    public_summary = str(request.form.get("public_summary") or "").strip()[:500]
+    if not re.fullmatch(r"\d{17,22}", discord_user_id):
+        flash("Enter the reported account’s 17–22 digit Discord user ID.", "error")
+        return redirect(url_for("admin_reports", status=return_status))
+    if not display_name or len(public_summary) < 20:
+        flash("Add a display name and a public summary of at least 20 characters.", "error")
+        return redirect(url_for("admin_reports", status=return_status))
+
+    guild_id = None
+    guild_name = ""
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                report = conn.execute(
+                    "SELECT status,guild_id,guild_name FROM bot_reports WHERE report_id=%s", (report_id,)
+                ).fetchone()
+                if report is None:
+                    return "Report not found.", 404
+                if str(report[0]) not in {"reviewing", "resolved"}:
+                    flash("Set the report to Reviewing or Resolved before publishing a safety entry.", "error")
+                    return redirect(url_for("admin_reports", status=return_status))
+                guild_id, guild_name = report[1], str(report[2] or "")
+                duplicate = conn.execute(
+                    "SELECT source_report_id FROM scam_watchlist WHERE discord_user_id=%s", (discord_user_id,)
+                ).fetchone()
+                if duplicate and int(duplicate[0]) != report_id:
+                    flash("That Discord account already has a published entry.", "info")
+                    return redirect(url_for("admin_reports", status=return_status))
+                existing = conn.execute(
+                    "SELECT entry_id FROM scam_watchlist WHERE source_report_id=%s", (report_id,)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE scam_watchlist SET discord_user_id=%s,display_name=%s,public_summary=%s,added_by=%s,updated_at=NOW() WHERE source_report_id=%s",
+                        (discord_user_id, display_name, public_summary, actor_id, report_id),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO scam_watchlist(discord_user_id,display_name,public_summary,source_report_id,added_by) VALUES(%s,%s,%s,%s,%s)",
+                        (discord_user_id, display_name, public_summary, report_id, actor_id),
+                    )
+        except psycopg.Error as exc:
+            app.logger.warning("Could not publish scam watchlist entry: %s", type(exc).__name__)
+            flash("The watchlist entry could not be saved. Try again.", "error")
+            return redirect(url_for("admin_reports", status=return_status))
+    else:
+        report = next((item for item in BOT_REPORTS if int(item["report_id"]) == report_id), None)
+        if report is None:
+            return "Report not found.", 404
+        if report.get("status") not in {"reviewing", "resolved"}:
+            flash("Set the report to Reviewing or Resolved before publishing a safety entry.", "error")
+            return redirect(url_for("admin_reports", status=return_status))
+        duplicate = next((entry for entry in SCAM_WATCHLIST if entry["discord_user_id"] == discord_user_id and int(entry["source_report_id"]) != report_id), None)
+        if duplicate:
+            flash("That Discord account already has a published entry.", "info")
+            return redirect(url_for("admin_reports", status=return_status))
+        entry = next((entry for entry in SCAM_WATCHLIST if int(entry["source_report_id"]) == report_id), None)
+        if entry:
+            entry.update({"discord_user_id": discord_user_id, "display_name": display_name, "public_summary": public_summary, "added_by": actor_id, "created_at": entry.get("created_at", time.time())})
+        else:
+            entry = {"entry_id": SCAM_WATCHLIST_NEXT_ID, "discord_user_id": discord_user_id, "display_name": display_name, "public_summary": public_summary, "source_report_id": report_id, "added_by": actor_id, "created_at": time.time()}
+            SCAM_WATCHLIST_NEXT_ID += 1
+            SCAM_WATCHLIST.append(entry)
+        guild_id, guild_name = report.get("guild_id"), str(report.get("guild_name") or "")
+
+    record_bot_event(
+        "scam_watchlist_added", guild_id=guild_id, guild_name=guild_name,
+        user_id=actor_id, username=actor_name, command_name="scam watchlist",
+        metadata={"report_id": report_id},
+    )
+    flash("The reviewed account is now on the public Scam Watchlist.", "success")
     return redirect(url_for("admin_reports", status=return_status))
 
 @app.post("/api/bot/heartbeat")
@@ -940,6 +1086,8 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS bot_telemetry_created_at_idx ON bot_telemetry(created_at DESC)")
             cur.execute("CREATE TABLE IF NOT EXISTS bot_reports (report_id BIGSERIAL PRIMARY KEY, source_message_id TEXT NOT NULL UNIQUE, reporter_id TEXT NOT NULL, reporter_name TEXT NOT NULL DEFAULT '', guild_id TEXT, guild_name TEXT NOT NULL DEFAULT 'Not specified', target TEXT NOT NULL DEFAULT '', details TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', staff_note TEXT NOT NULL DEFAULT '', reviewed_by TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cur.execute("CREATE INDEX IF NOT EXISTS bot_reports_status_created_idx ON bot_reports(status, created_at DESC)")
+            cur.execute("CREATE TABLE IF NOT EXISTS scam_watchlist (entry_id BIGSERIAL PRIMARY KEY, discord_user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, public_summary TEXT NOT NULL, source_report_id BIGINT NOT NULL UNIQUE REFERENCES bot_reports(report_id) ON DELETE CASCADE, added_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cur.execute("CREATE INDEX IF NOT EXISTS scam_watchlist_created_idx ON scam_watchlist(created_at DESC)")
             cur.execute("CREATE TABLE IF NOT EXISTS security_incident_reviews (guild_id TEXT NOT NULL, case_id TEXT NOT NULL, reviewed_by TEXT NOT NULL, reviewer_name TEXT NOT NULL, reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), note TEXT NOT NULL DEFAULT '', PRIMARY KEY (guild_id, case_id))")
             # Seed the public bot release announcements once, without duplicating them.
             bot_releases = [
@@ -1970,6 +2118,35 @@ def security():
 @app.get("/reports")
 def reports_page():
     return render_template("reports.html")
+
+
+@app.get("/scam-watchlist")
+def scam_watchlist_page():
+    entries = []
+    error = ""
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                rows = conn.execute(
+                    "SELECT discord_user_id,display_name,public_summary,created_at "
+                    "FROM scam_watchlist ORDER BY created_at DESC,entry_id DESC"
+                ).fetchall()
+            entries = [{
+                "discord_user_id": str(row[0]), "display_name": str(row[1] or "Discord account"),
+                "public_summary": str(row[2] or ""),
+                "created_at": row[3].strftime("%b %d, %Y") if hasattr(row[3], "strftime") else str(row[3] or ""),
+            } for row in rows]
+        except psycopg.Error as exc:
+            app.logger.warning("Could not load scam watchlist: %s", type(exc).__name__)
+            error = "The Scam Watchlist is temporarily unavailable. Please try again later."
+    else:
+        entries = [{
+            "discord_user_id": str(item.get("discord_user_id") or ""),
+            "display_name": str(item.get("display_name") or "Discord account"),
+            "public_summary": str(item.get("public_summary") or ""),
+            "created_at": format_timestamp(item.get("created_at")),
+        } for item in sorted(SCAM_WATCHLIST, key=lambda item: float(item.get("created_at") or 0), reverse=True)]
+    return render_template("scam_watchlist.html", entries=entries, error=error)
 
 
 @app.get("/verification")
