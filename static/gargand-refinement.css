@@ -18,26 +18,23 @@ body.gargand-site {
 }
 
 body.gargand-site::before {
-  background:
-    radial-gradient(ellipse at 76% 0%, rgba(202, 155, 58, .12), transparent 34%),
-    radial-gradient(ellipse at 10% 38%, rgba(55, 105, 153, .15), transparent 40%),
-    linear-gradient(180deg, #0a1421 0%, #08111d 58%, #09121d 100%) !important;
+  display: none !important;
 }
 
 .gg-site-backdrop {
-  background: #08111d !important;
+  background:
+    radial-gradient(ellipse at 82% 4%, rgba(199, 157, 73, .16), transparent 31%),
+    radial-gradient(ellipse at 12% 28%, rgba(59, 112, 164, .18), transparent 39%),
+    radial-gradient(ellipse at 58% 100%, rgba(17, 57, 89, .18), transparent 42%),
+    linear-gradient(145deg, #0b1726 0%, #08111d 54%, #070e18 100%) !important;
 }
 
 .gg-site-backdrop-video {
-  opacity: .075 !important;
-  filter: brightness(.42) saturate(.48) contrast(1.05) !important;
-  transform: none !important;
+  display: none !important;
 }
 
 .gg-site-backdrop::after {
-  background:
-    linear-gradient(180deg, rgba(7, 15, 26, .65), rgba(7, 15, 26, .48) 42%, rgba(7, 15, 26, .78)),
-    linear-gradient(90deg, rgba(7, 15, 26, .34), transparent 50%, rgba(7, 15, 26, .34)) !important;
+  background: linear-gradient(180deg, rgba(5, 12, 21, .08), rgba(5, 12, 21, .2) 48%, rgba(5, 12, 21, .48)) !important;
 }
 
 .gg-header {
@@ -284,6 +281,45 @@ body.gargand-site::before {
 .gg-footer,
 .gg-footer-bottom {
   border-color: rgba(169, 187, 209, .14) !important;
+}
+
+.gg-admin-server-list {
+  display: grid;
+  gap: 10px;
+}
+
+.gg-admin-server-list > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--gg-border);
+  border-radius: 13px;
+  background: rgba(12, 22, 36, .78);
+}
+
+.gg-admin-server-list > article > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.gg-admin-server-list > article strong {
+  overflow-wrap: anywhere;
+}
+
+.gg-admin-server-list > article span,
+.gg-admin-server-empty {
+  color: var(--gg-copy-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .gg-admin-server-list > article {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 #main-content input,

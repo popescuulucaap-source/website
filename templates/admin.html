@@ -9,6 +9,16 @@
     <article class="gg-feature"><span class="gg-kicker">ANNOUNCEMENTS</span><h3>{{ stats.announcement_count }} posts</h3><p>Publish website or bot release notes.</p></article>
   </div>
 </section>
+<section class="gg-section" id="bot-servers">
+  <div class="gg-section-head"><div><span class="gg-kicker">BOT SERVERS</span><h2>Servers Gargand is in</h2></div><p>Open a server directly in Discord. Links work for accounts that already have access to that server.</p></div>
+  <div class="gg-admin-server-list">
+    {% for guild in bot_guilds %}
+      <article><div><strong>{{ guild.name }}</strong><span>{{ guild.member_count or "—" }} members · Server ID {{ guild.id }}</span></div><a class="gg-button gg-button-dark" href="{{ guild.invite_url or ('https://discord.com/channels/' ~ guild.id) }}" target="_blank" rel="noopener noreferrer">{% if guild.invite_url %}Open invite ↗{% else %}Open server ↗{% endif %}</a></article>
+    {% else %}
+      <p class="gg-admin-server-empty">No server snapshot yet. Once Gargand checks in, its server list will appear here.</p>
+    {% endfor %}
+  </div>
+</section>
 <section class="gg-section">
   <div class="gg-section-head"><div><span class="gg-kicker">QUICK ACCESS</span><h2>More admin tools</h2></div><p>Review support conversations and moderation telemetry.</p></div>
   <div class="gg-feature-grid"><article class="gg-feature"><h3>Support inbox</h3><p>Review and reply to support tickets.</p><a href="/admin/support">Open inbox ↗</a></article><article class="gg-feature"><h3>Bot activity audit</h3><p>Review available bot events and activity records.</p><a href="/admin/audit">Open audit ↗</a></article><article class="gg-feature"><h3>Community moderation</h3><p>Review community submissions and reports.</p><a href="/admin/community">Open moderation ↗</a></article></div>

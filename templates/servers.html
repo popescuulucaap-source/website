@@ -2,7 +2,7 @@
 {% block title %}Gargand • Your Servers{% endblock %}
 {% block content %}
 <section class="page-head"><span class="eyebrow">DASHBOARD</span><h1>Select a server.</h1><p>Choose a server where you have Manage Server or Administrator permission.</p></section>
-{% if bot_api_error %}<div class="card notice error bot-api-alert"><b>Gargand connection problem</b><p>{{ bot_api_error }}</p><p>The website could not read Gargand's server list. Refresh after the bot is online.</p></div>{% endif %}
+{% if bot_api_error %}<div class="card notice error bot-api-alert"><b>Gargand connection problem</b><p>{{ bot_api_error }}</p><p>When the bot checks in, refresh this page to load its server list.</p></div>{% endif %}
 <div class="server-grid">
 {% for guild in guilds %}
 <a class="server-card {% if not guild.bot_present %}server-missing{% endif %}" href="{% if guild.bot_present %}/dashboard/{{ guild.id }}{% else %}{{ invite_url }}{% endif %}">

@@ -358,7 +358,7 @@ def require_discord_for_site():
     # Public browsing is allowed. State-changing/private areas still require Discord.
     public_get = {"/", "/commands", "/planets", "/guidelines", "/announcements", "/suggestions", "/support", "/terms", "/socials", "/security", "/verification", "/gargand-lion.jpg", "/gargand-lion-4k.jpg", "/gargand-bar.gif"}
     public_secret_api = set()
-    public_bot_api = {"/api/bot/heartbeat", "/api/bot/pull", "/api/bot/announcements", "/api/bot/job-result"}
+    public_bot_api = {"/api/bot/heartbeat", "/api/bot/pull", "/api/bot/announcements", "/api/bot/job-result", "/api/bot/status"}
     endpoint = request.endpoint or ""
     if endpoint in {"login", "oauth_callback", "health"} or endpoint.startswith("static") or endpoint.startswith("admin"):
         return None
@@ -1076,7 +1076,10 @@ def admin():
     session.permanent = True
     announcements = load_announcements()
     custom_commands = load_custom_commands()
-    guilds = bot_guild_snapshot()
+    guilds = sorted(
+        bot_guild_snapshot(),
+        key=lambda guild: (str(guild.get("name") or "").casefold(), str(guild.get("id") or "")),
+    )
     member_total = sum(int(guild.get("member_count") or 0) for guild in guilds)
     last_seen = BOT_LAST_SEEN
     if DATABASE_URL:
@@ -1908,7 +1911,16 @@ def servers():
             if icon_hash else ""
         )
 
-    bot_api_error = None if bot_online() else "Gargand has not checked in with the website yet. Make sure the bot and bridge secret are configured."
+    if bot_online():
+        bot_api_error = None
+    elif not BOT_BRIDGE_SECRET:
+        bot_api_error = "The website bridge secret is missing. Set GARGAND_BRIDGE_SECRET in the Render website environment, then redeploy."
+    else:
+        bot_api_error = (
+            "The website bridge secret is configured, but Gargand has not checked in yet. "
+            "On the bot host, set GARGAND_WEBSITE_URL to https://gargand-bot.onrender.com and "
+            "set GARGAND_BRIDGE_SECRET to the same value used by the Render website, then restart the bot."
+        )
 
     return render_template(
         "servers.html",
