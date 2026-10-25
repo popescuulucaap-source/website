@@ -7,7 +7,12 @@
   .moderation-heading h1{margin:.35rem 0}
   .moderation-note{opacity:.75}
   .moderation-tools{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
-  .moderation-search{min-height:2.7rem;min-width:min(18rem,80vw);padding:.6rem .8rem;border:1px solid rgba(255,255,255,.18);border-radius:.7rem;background:rgba(0,0,0,.25);color:inherit}
+  .moderation-filters{display:flex;align-items:end;gap:.65rem;flex-wrap:wrap;margin:0 0 1rem;padding:1rem;border:1px solid rgba(255,255,255,.12);border-radius:1rem;background:rgba(255,255,255,.035)}
+  .moderation-filters label{display:grid;gap:.35rem;color:rgba(255,255,255,.72);font-size:.75rem;letter-spacing:.04em}
+  .moderation-filters input,.moderation-filters select{min-height:2.7rem;padding:.55rem .7rem;border:1px solid rgba(255,255,255,.18);border-radius:.7rem;background:#15120e;color:inherit}
+  .moderation-filters input[type=search]{min-width:min(17rem,78vw)}
+  .moderation-pagination{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
+  .moderation-pagination .btn{min-height:2.4rem}
   .moderation-table-wrap{overflow-x:auto}
   .moderation-table{width:100%;border-collapse:collapse;min-width:760px}
   .moderation-table th,.moderation-table td{padding:.8rem .65rem;text-align:left;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.1)}
@@ -29,10 +34,17 @@
     <div><span class="eyebrow">GARGAND CASE &amp; INCIDENT CENTER</span><h1>{{ guild.name }}</h1><p class="moderation-note">Moderation actions, verification risk signals and raid response stages recorded by Gargand. Visible to server managers.</p></div>
     <div class="moderation-tools">
       <a class="btn ghost" href="{{ url_for('dashboard', guild_id=guild.id) }}">← Dashboard</a>
-      <input id="caseSearch" class="moderation-search" type="search" placeholder="Search staff, member, action or reason" aria-label="Search moderation cases">
-      <label class="review-filter"><input id="unreviewedOnly" type="checkbox"> Unreviewed incidents only</label>
+      {% if export_url %}<a class="btn primary" href="{{ export_url }}">↓ Export CSV</a>{% endif %}
     </div>
   </div>
+  <form class="moderation-filters" method="get" action="{{ url_for('guild_moderation', guild_id=guild.id) }}">
+    <label>Search cases<input type="search" name="q" value="{{ filters.q }}" placeholder="Staff, member, reason or case ID"></label>
+    <label>Action<select name="action"><option value="">All actions</option>{% for action in actions %}<option value="{{ action|lower }}" {% if filters.action == action|lower %}selected{% endif %}>{{ action|replace('_', ' ')|title }}</option>{% endfor %}</select></label>
+    <label>From<input type="date" name="date_from" value="{{ filters.date_from.isoformat() if filters.date_from else '' }}"></label>
+    <label>Through<input type="date" name="date_to" value="{{ filters.date_to.isoformat() if filters.date_to else '' }}"></label>
+    <button class="btn primary" type="submit">Filter records</button>
+    {% if filters.q or filters.action or filters.date_from or filters.date_to %}<a class="btn ghost" href="{{ url_for('guild_moderation', guild_id=guild.id) }}">Clear</a>{% endif %}
+  </form>
   {% if moderation_error %}
     <div class="card notice error" role="status">{{ moderation_error }}</div>
   {% elif cases %}
@@ -68,19 +80,25 @@
           {% endfor %}
         </tbody>
       </table>
-      <p id="caseSearchResult" class="moderation-note" aria-live="polite">Showing {{ cases|length }} recent records.</p>
+      <div class="moderation-pagination">
+        <p id="caseSearchResult" class="moderation-note" aria-live="polite">Showing page {{ page }}{% if total_pages %} of {{ total_pages }}{% endif %} · {{ total_cases }} matching record{{ '' if total_cases == 1 else 's' }}. Export includes up to 10,000 matching records.</p>
+        <label class="review-filter"><input id="unreviewedOnly" type="checkbox"> Unreviewed incidents on this page</label>
+        <nav class="moderation-tools" aria-label="Moderation history pages">
+          {% if previous_url %}<a class="btn ghost" href="{{ previous_url }}">← Newer</a>{% endif %}
+          {% if next_url %}<a class="btn ghost" href="{{ next_url }}">Older →</a>{% endif %}
+        </nav>
+      </div>
     </div>
     <script>
       document.addEventListener("DOMContentLoaded",function(){
-        var search=document.getElementById("caseSearch"),rows=Array.from(document.querySelectorAll("[data-case-row]")),result=document.getElementById("caseSearchResult"),unreviewed=document.getElementById("unreviewedOnly"),section=document.querySelector(".guild-moderation");
-        if(!search)return;
+        var rows=Array.from(document.querySelectorAll("[data-case-row]")),result=document.getElementById("caseSearchResult"),unreviewed=document.getElementById("unreviewedOnly"),section=document.querySelector(".guild-moderation");
         function filterRows(){
-          var query=search.value.trim().toLocaleLowerCase(),onlyOpen=!!(unreviewed&&unreviewed.checked),visible=0;
-          rows.forEach(function(row){var matchesText=row.textContent.toLocaleLowerCase().includes(query),matchesReview=!onlyOpen||(row.dataset.reviewed!=="true"&&!!row.querySelector("[data-review-state]")),show=matchesText&&matchesReview;row.hidden=!show;if(show)visible++;});
-          result.textContent="Showing "+visible+" of "+rows.length+(onlyOpen?" unreviewed incident(s).":" records.");
+          var onlyOpen=!!(unreviewed&&unreviewed.checked),visible=0;
+          rows.forEach(function(row){var matchesReview=!onlyOpen||(row.dataset.reviewed!=="true"&&!!row.querySelector("[data-review-state]"));row.hidden=!matchesReview;if(matchesReview)visible++;});
+          if(result&&onlyOpen)result.textContent="Showing "+visible+" unreviewed incident(s) on this page.";
         }
-        search.addEventListener("input",filterRows);
         if(unreviewed)unreviewed.addEventListener("change",filterRows);
+        if(!section)return;
         section.querySelectorAll(".review-incident").forEach(function(button){
           button.addEventListener("click",async function(){
             var original=button.textContent,body=new URLSearchParams();
@@ -96,6 +114,8 @@
         });
       });
     </script>
+  {% elif filters.q or filters.action or filters.date_from or filters.date_to %}
+    <div class="card moderation-empty"><h2>No matching records</h2><p>Change the filters or widen the date range to find a case.</p></div>
   {% else %}
     <div class="card moderation-empty"><h2>No cases yet</h2><p>Once Gargand reports moderation actions or security incidents, new records will appear here. Existing history from before this update is not backfilled.</p><a class="btn ghost" href="{{ url_for('guild_analytics', guild_id=guild.id) }}">View server activity</a></div>
   {% endif %}

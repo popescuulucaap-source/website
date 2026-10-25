@@ -1,12 +1,14 @@
 import os
 from io import BytesIO
+from io import StringIO
+import csv
 import json
 import secrets
 import base64
 import hashlib
 import threading
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 from collections import defaultdict, deque
 from hmac import compare_digest
 from functools import wraps
@@ -103,7 +105,7 @@ def gargand_bar_asset():
 def harden_oauth_callback_response(response):
     # OAuth callback URLs contain short-lived authorization codes and state.
     # Keep them out of caches, referrers, and search indexes.
-    if request.path == "/oauth/callback":
+    if request.path in {"/oauth/callback", "/oauth/callback/"}:
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -830,10 +832,14 @@ def load_announcements():
     sync_repository_updates()
     if not DATABASE_URL:
         return [item for item in MEMORY_ANNOUNCEMENTS if item.get("kind") == "bot"]
-    with db_connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, title, body, date, kind FROM announcements WHERE kind='bot' ORDER BY id DESC")
-            return [{"id":r[0],"title":r[1],"body":r[2],"date":r[3],"kind":"bot"} for r in cur.fetchall()]
+    try:
+        with db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, title, body, date, kind FROM announcements WHERE kind='bot' ORDER BY id DESC")
+                return [{"id":r[0],"title":r[1],"body":r[2],"date":r[3],"kind":"bot"} for r in cur.fetchall()]
+    except psycopg.Error as exc:
+        app.logger.warning("Could not load announcements: %s", type(exc).__name__)
+        return [item for item in MEMORY_ANNOUNCEMENTS if item.get("kind") == "bot"]
 
 def save_announcement(title, body, kind="bot"):
     global MEMORY_ANNOUNCEMENT_ID
@@ -858,10 +864,14 @@ def delete_announcement(announcement_id):
 
 def load_custom_commands():
     if not DATABASE_URL: return list(MEMORY_CUSTOM_COMMANDS)
-    with db_connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, command, category, description FROM custom_commands ORDER BY id DESC")
-            return [{"id":r[0],"command":r[1],"category":r[2],"description":r[3]} for r in cur.fetchall()]
+    try:
+        with db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, command, category, description FROM custom_commands ORDER BY id DESC")
+                return [{"id":r[0],"command":r[1],"category":r[2],"description":r[3]} for r in cur.fetchall()]
+    except psycopg.Error as exc:
+        app.logger.warning("Could not load custom commands: %s", type(exc).__name__)
+        return list(MEMORY_CUSTOM_COMMANDS)
 
 def save_custom_command(command, category, description):
     global MEMORY_CUSTOM_COMMAND_ID
@@ -933,9 +943,13 @@ def load_developers():
     if not DATABASE_URL:
         rows = [dict(item) for item in MEMORY_DEVELOPERS]
     else:
-        with db_connect() as conn:
-            rows = conn.execute("SELECT discord_id, display_name, role FROM developers ORDER BY CASE WHEN LOWER(role)='owner' THEN 0 ELSE 1 END, display_name ASC").fetchall()
-        rows = [{"discord_id": str(row[0]), "display_name": row[1], "role": row[2]} for row in rows]
+        try:
+            with db_connect() as conn:
+                rows = conn.execute("SELECT discord_id, display_name, role FROM developers ORDER BY CASE WHEN LOWER(role)='owner' THEN 0 ELSE 1 END, display_name ASC").fetchall()
+            rows = [{"discord_id": str(row[0]), "display_name": row[1], "role": row[2]} for row in rows]
+        except psycopg.Error as exc:
+            app.logger.warning("Could not load developer list: %s", type(exc).__name__)
+            rows = [dict(item) for item in MEMORY_DEVELOPERS]
     return present_developers(rows)
 
 
@@ -1776,6 +1790,7 @@ def login():
     return redirect(f"https://discord.com/oauth2/authorize?{urlencode(params)}")
 
 
+@app.get("/oauth/callback/")
 @app.get("/oauth/callback")
 def oauth_callback():
     # RFC 9207 issuer identification: reject authorization responses from any
@@ -2026,6 +2041,94 @@ def guild_analytics(guild_id):
 
 
 
+def _moderation_case_filters(args):
+    def parse_day(value):
+        try:
+            return date.fromisoformat(str(value or ""))
+        except ValueError:
+            return None
+
+    try:
+        page = max(1, int(args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    return {
+        "page": page,
+        "q": str(args.get("q", "")).strip()[:120],
+        "action": str(args.get("action", "")).strip().lower()[:80],
+        "date_from": parse_day(args.get("date_from")),
+        "date_to": parse_day(args.get("date_to")),
+    }
+
+
+def _moderation_case_where(guild_id, filters):
+    clauses = ["guild_id = %s", "event_type IN ('moderation_case','security_incident')"]
+    params = [str(guild_id)]
+    if filters["q"]:
+        pattern = f"%{filters['q']}%"
+        clauses.append("(COALESCE(username,'') ILIKE %s OR COALESCE(user_id,'') ILIKE %s OR COALESCE(command_name,'') ILIKE %s OR COALESCE(metadata::text,'') ILIKE %s)")
+        params.extend([pattern] * 4)
+    if filters["action"]:
+        clauses.append("LOWER(COALESCE(command_name,'')) = %s")
+        params.append(filters["action"])
+    if filters["date_from"]:
+        clauses.append("created_at >= %s::date")
+        params.append(filters["date_from"])
+    if filters["date_to"]:
+        clauses.append("created_at < (%s::date + INTERVAL '1 day')")
+        params.append(filters["date_to"])
+    return " AND ".join(clauses), params
+
+
+def _moderation_case_from_row(row):
+    try:
+        metadata = json.loads(row[5] or "{}")
+    except (TypeError, ValueError):
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return {
+        "id": int(row[0]),
+        "case_id": str(metadata.get("case_id") or row[0]),
+        "created_at": row[1],
+        "actor": str(row[2] or "Unknown staff member"),
+        "actor_id": str(row[3] or ""),
+        "action": str(metadata.get("action") or row[4] or "moderation"),
+        "record_type": str(metadata.get("record_type") or ("incident" if row[6] == "security_incident" else "case")),
+        "reviewable": str(metadata.get("case_id") or "").isdigit(),
+        "target_id": str(metadata.get("target_id") or ""),
+        "target_name": str(metadata.get("target_name") or "—"),
+        "reason": str(metadata.get("reason") or "No reason provided"),
+        "outcome": str(metadata.get("outcome") or "success"),
+        "details": str(metadata.get("details") or ""),
+        "expires_at": format_timestamp(metadata["expires_at"]) if str(metadata.get("expires_at") or "").isdigit() else None,
+    }
+
+
+def _moderation_page_url(guild_id, filters, page):
+    params = {}
+    for key in ("q", "action"):
+        if filters[key]:
+            params[key] = filters[key]
+    for key in ("date_from", "date_to"):
+        if filters[key]:
+            params[key] = filters[key].isoformat()
+    if page > 1:
+        params["page"] = page
+    return url_for("guild_moderation", guild_id=guild_id, **params)
+
+
+def _safe_csv_cell(value):
+    text = str(value if value is not None else "")
+    if text.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
+MODERATION_CASE_PAGE_SIZE = 25
+MODERATION_CASE_EXPORT_LIMIT = 10000
+
+
 @app.get("/dashboard/<guild_id>/moderation")
 @login_required
 def guild_moderation(guild_id):
@@ -2035,47 +2138,47 @@ def guild_moderation(guild_id):
 
     bot_guild = next((item for item in bot_guild_snapshot() if item["id"] == str(guild_id)), {})
     guild = {"id": str(guild_id), "name": bot_guild.get("name") or "Discord server"}
+    filters = _moderation_case_filters(request.args)
     cases = []
+    actions = []
     moderation_error = None
+    total_cases = 0
+    total_pages = 0
+    page = 1
+    previous_url = None
+    next_url = None
+    export_url = None
 
     if not DATABASE_URL:
         moderation_error = "Moderation history needs shared database storage (DATABASE_URL)."
     else:
         try:
+            where_sql, where_params = _moderation_case_where(guild_id, filters)
             with db_connect() as conn:
+                total_cases = int(conn.execute(
+                    f"SELECT COUNT(*) FROM bot_telemetry WHERE {where_sql}", where_params
+                ).fetchone()[0])
+                actions = [
+                    str(row[0]) for row in conn.execute(
+                        "SELECT DISTINCT command_name FROM bot_telemetry "
+                        "WHERE guild_id=%s AND event_type IN ('moderation_case','security_incident') "
+                        "AND COALESCE(command_name,'') <> '' ORDER BY command_name",
+                        (str(guild_id),),
+                    ).fetchall()
+                ]
+                total_pages = (total_cases + MODERATION_CASE_PAGE_SIZE - 1) // MODERATION_CASE_PAGE_SIZE
+                page = min(filters["page"], max(1, total_pages))
                 rows = conn.execute(
-                    "SELECT id, created_at, username, user_id, command_name, metadata, event_type "
-                    "FROM bot_telemetry WHERE guild_id = %s AND event_type IN ('moderation_case','security_incident') "
-                    "ORDER BY created_at DESC, id DESC LIMIT 100",
-                    (str(guild_id),),
+                    f"SELECT id, created_at, username, user_id, command_name, metadata, event_type "
+                    f"FROM bot_telemetry WHERE {where_sql} "
+                    "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
+                    where_params + [MODERATION_CASE_PAGE_SIZE, (page - 1) * MODERATION_CASE_PAGE_SIZE],
                 ).fetchall()
                 review_rows = conn.execute(
                     "SELECT case_id,reviewed_by,reviewer_name,reviewed_at FROM security_incident_reviews WHERE guild_id=%s",
                     (str(guild_id),),
                 ).fetchall()
-            for row in rows:
-                try:
-                    metadata = json.loads(row[5] or "{}")
-                except (TypeError, ValueError):
-                    metadata = {}
-                if not isinstance(metadata, dict):
-                    metadata = {}
-                cases.append({
-                    "id": int(row[0]),
-                    "case_id": str(metadata.get("case_id") or row[0]),
-                    "created_at": row[1],
-                    "actor": str(row[2] or "Unknown staff member"),
-                    "actor_id": str(row[3] or ""),
-                    "action": str(metadata.get("action") or row[4] or "moderation"),
-                    "record_type": str(metadata.get("record_type") or ("incident" if row[6] == "security_incident" else "case")),
-                    "reviewable": str(metadata.get("case_id") or "").isdigit(),
-                    "target_id": str(metadata.get("target_id") or ""),
-                    "target_name": str(metadata.get("target_name") or "—"),
-                    "reason": str(metadata.get("reason") or "No reason provided"),
-                    "outcome": str(metadata.get("outcome") or "success"),
-                    "details": str(metadata.get("details") or ""),
-                    "expires_at": format_timestamp(metadata["expires_at"]) if str(metadata.get("expires_at") or "").isdigit() else None,
-                })
+            cases = [_moderation_case_from_row(row) for row in rows]
             review_by_case = {
                 str(row[0]): {"reviewed_by": str(row[1]), "reviewer_name": str(row[2]), "reviewed_at": row[3]}
                 for row in review_rows
@@ -2085,6 +2188,12 @@ def guild_moderation(guild_id):
                 case["reviewed"] = bool(review)
                 case["reviewer_name"] = review["reviewer_name"] if review else ""
                 case["reviewed_at"] = review["reviewed_at"] if review else None
+            if page > 1:
+                previous_url = _moderation_page_url(guild_id, filters, page - 1)
+            if page < total_pages:
+                next_url = _moderation_page_url(guild_id, filters, page + 1)
+            export_params = {key: value for key, value in request.args.items() if key in {"q", "action", "date_from", "date_to"} and value}
+            export_url = url_for("export_guild_moderation", guild_id=guild_id, **export_params)
         except psycopg.Error as exc:
             app.logger.warning("Could not load guild moderation history: %s", type(exc).__name__)
             moderation_error = "Moderation history is temporarily unavailable."
@@ -2093,9 +2202,62 @@ def guild_moderation(guild_id):
         "guild_moderation.html",
         guild=guild,
         cases=cases,
+        actions=actions,
+        filters=filters,
+        total_cases=total_cases,
+        page=page,
+        total_pages=total_pages,
+        previous_url=previous_url,
+        next_url=next_url,
+        export_url=export_url,
         moderation_error=moderation_error,
         can_review_incidents=can_review_incidents,
     )
+
+
+@app.get("/dashboard/<guild_id>/moderation.csv")
+@login_required
+def export_guild_moderation(guild_id):
+    if not user_can_manage_guild(guild_id):
+        return "You do not have permission to manage this server.", 403
+    if not DATABASE_URL:
+        return "Moderation history needs shared database storage.", 503
+    filters = _moderation_case_filters(request.args)
+    where_sql, where_params = _moderation_case_where(guild_id, filters)
+    try:
+        with db_connect() as conn:
+            rows = conn.execute(
+                f"SELECT id, created_at, username, user_id, command_name, metadata, event_type "
+                f"FROM bot_telemetry WHERE {where_sql} "
+                "ORDER BY created_at DESC, id DESC LIMIT %s",
+                where_params + [MODERATION_CASE_EXPORT_LIMIT],
+            ).fetchall()
+    except psycopg.Error as exc:
+        app.logger.warning("Could not export guild moderation history: %s", type(exc).__name__)
+        return "Moderation history is temporarily unavailable.", 503
+
+    output = StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Case ID", "Created at (UTC)", "Record type", "Action", "Staff", "Staff ID", "Member", "Member ID", "Reason", "Outcome", "Details"])
+    for row in rows:
+        case = _moderation_case_from_row(row)
+        writer.writerow([
+            _safe_csv_cell(case["case_id"]),
+            _safe_csv_cell(case["created_at"].isoformat() if case["created_at"] else ""),
+            _safe_csv_cell(case["record_type"]),
+            _safe_csv_cell(case["action"]),
+            _safe_csv_cell(case["actor"]),
+            _safe_csv_cell(case["actor_id"]),
+            _safe_csv_cell(case["target_name"]),
+            _safe_csv_cell(case["target_id"]),
+            _safe_csv_cell(case["reason"]),
+            _safe_csv_cell(case["outcome"]),
+            _safe_csv_cell(case["details"]),
+        ])
+    response = Response(output.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = f'attachment; filename="gargand-moderation-{guild_id}.csv"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.post("/api/dashboard/<guild_id>/incidents/<case_id>/review")
@@ -2624,6 +2786,7 @@ def health():
         request_count = APP_REQUEST_COUNT
     return jsonify({
         "ok": True,
+        "degraded": database_configured and not database_reachable,
         "service": "Gargand Dashboard",
         "uptime_seconds": max(0, int(time.time() - APP_STARTED_AT)),
         "requests_since_start": request_count,

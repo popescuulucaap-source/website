@@ -4,24 +4,22 @@ on:
   push:
     branches: [main]
     paths:
-      - "app.py"
-      - "templates/base.html"
-      - "templates/dashboard.html"
-      - "templates/commands.html"
-      - "static/dashboard.js"
-      - "static/commands.js"
-      - "static/gargand-lion-polish.css"
+      - "**/*.py"
+      - "templates/**"
+      - "static/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".env.example"
       - ".github/workflows/validate-gargand-website.yml"
   pull_request:
     branches: [main]
     paths:
-      - "app.py"
-      - "templates/base.html"
-      - "templates/dashboard.html"
-      - "templates/commands.html"
-      - "static/dashboard.js"
-      - "static/commands.js"
-      - "static/gargand-lion-polish.css"
+      - "**/*.py"
+      - "templates/**"
+      - "static/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".env.example"
       - ".github/workflows/validate-gargand-website.yml"
 
 permissions:
@@ -43,6 +41,8 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Compile Python
         run: python -m py_compile app.py
+      - name: Run website tests
+        run: python -m unittest discover -s tests -v
       - name: Check JavaScript syntax
         run: |
           node --check static/dashboard.js
@@ -53,7 +53,9 @@ jobs:
           from jinja2 import Environment, FileSystemLoader
 
           env = Environment(loader=FileSystemLoader("templates"))
-          for name in ("base.html", "dashboard.html", "commands.html"):
-              env.get_template(name)
-              print(f"Template parsed: {name}")
+          from pathlib import Path
+
+          for path in sorted(Path("templates").glob("*.html")):
+              env.get_template(path.name)
+              print(f"Template parsed: {path.name}")
           PY
