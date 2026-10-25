@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Gargand • Scam Watchlist{% endblock %}
+{% block content %}
+<section class="page-head control-admin-hero scam-watch-hero">
+  <span class="eyebrow">COMMUNITY SAFETY · REVIEWED REPORTS</span>
+  <h1>Scam Watchlist.</h1>
+  <p>Accounts community members have reported and Gargand moderators have reviewed. Check the details carefully before interacting with an account.</p>
+  <div class="control-hero-actions"><a class="gg-button gg-button-bright" href="/reports">Submit a report ↗</a><span class="scam-watch-count">{{ entries|length }} published account{{ '' if entries|length == 1 else 's' }}</span></div>
+</section>
+
+<section class="scam-watch-notice" role="note">
+  <strong>Reports are warnings, not proof.</strong>
+  <p>Listings reflect community reports reviewed by Gargand staff; they are not an official finding of wrongdoing. Do not harass, threaten, or contact anyone because they appear here. If a listing is wrong or outdated, report it to the Gargand team for review.</p>
+</section>
+
+{% if error %}<p class="control-inline-error scam-watch-width">{{ error }}</p>{% endif %}
+<section class="scam-watch-grid" aria-label="Published community safety reports">
+  {% for entry in entries %}
+  <article class="scam-watch-card">
+    <div class="scam-watch-card-top"><span class="scam-watch-badge">COMMUNITY-REPORTED</span><time>{{ entry.created_at }}</time></div>
+    <h2>{{ entry.display_name }}</h2>
+    <p class="scam-watch-id">Discord user ID <code>{{ entry.discord_user_id }}</code></p>
+    <p class="scam-watch-summary">{{ entry.public_summary }}</p>
+    <a class="scam-watch-profile" href="https://discord.com/users/{{ entry.discord_user_id }}" target="_blank" rel="noopener noreferrer">Open Discord profile ↗</a>
+  </article>
+  {% else %}
+  <div class="control-empty-state scam-watch-empty"><span>✓</span><h2>No published entries</h2><p>There are no reviewed community safety listings at the moment.</p></div>
+  {% endfor %}
+</section>
+{% endblock %}

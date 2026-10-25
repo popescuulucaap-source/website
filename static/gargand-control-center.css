@@ -286,3 +286,40 @@
 @media (max-width: 980px) { .control-terminal-command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .control-terminal-form { grid-template-columns: 1fr; } .control-terminal-command-library { width: min(100% - 22px, 1160px); } }
 @media (max-width: 520px) { .control-terminal-command-grid { grid-template-columns: 1fr; } .control-terminal-foot { flex-direction: column; gap: 2px; } .control-activity-toasts { top: 70px; right: 14px; } }
+
+.scam-watch-hero { margin-bottom: 20px; }
+.scam-watch-count { display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border: 1px solid rgba(231, 189, 89, .22); border-radius: 999px; color: #f0d28b; font-size: 12px; font-weight: 700; }
+.scam-watch-notice,.scam-watch-width,.scam-watch-grid,.scam-watch-flash { width: min(1160px, calc(100% - 36px)); margin: 0 auto 18px; }
+.scam-watch-notice { padding: 17px 20px; border: 1px solid rgba(231, 189, 89, .26); border-radius: 14px; background: linear-gradient(120deg, rgba(47, 37, 19, .64), rgba(14, 25, 38, .82)); }
+.scam-watch-notice strong { color: #f2d58e; font-size: 14px; }
+.scam-watch-notice p { margin: 6px 0 0; color: var(--gg-copy-muted, #b2bdcb); font-size: 12px; line-height: 1.65; }
+.scam-watch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-bottom: 45px; }
+.scam-watch-card { min-width: 0; padding: 20px; border: 1px solid rgba(169, 187, 209, .14); border-radius: 16px; background: linear-gradient(145deg, rgba(14, 27, 42, .93), rgba(8, 17, 29, .96)); box-shadow: 0 15px 38px rgba(0, 0, 0, .16); }
+.scam-watch-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.scam-watch-card-top time { color: #8595a5; font-size: 10px; }
+.scam-watch-badge { padding: 5px 8px; border: 1px solid rgba(231, 189, 89, .24); border-radius: 999px; color: #f0d28b; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+.scam-watch-card h2 { margin: 15px 0 5px; color: var(--gg-copy, #f4f6f8); font-size: 19px; overflow-wrap: anywhere; }
+.scam-watch-id { margin: 0; color: #9caaba; font-size: 11px; }
+.scam-watch-id code,.scam-watch-listed code { color: #8de2b7; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.scam-watch-summary { margin: 15px 0; color: var(--gg-copy-muted, #b2bdcb); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.scam-watch-profile { color: #f1d385; font-size: 12px; font-weight: 700; text-decoration: none; }
+.scam-watch-profile:hover { text-decoration: underline; }
+.scam-watch-empty { grid-column: 1 / -1; }
+.scam-watch-flash { padding: 12px 15px; border: 1px solid rgba(169, 187, 209, .18); border-radius: 10px; background: rgba(15, 25, 37, .9); color: #e7edf4; font-size: 12px; }
+.scam-watch-flash.success { border-color: rgba(104, 214, 158, .3); color: #a8ecc7; }
+.scam-watch-flash.error { border-color: rgba(245, 111, 111, .3); color: #ffb7b7; }
+.scam-watch-admin-box { display: grid; gap: 12px; margin: 0 0 14px; padding: 16px; border: 1px solid rgba(231, 189, 89, .18); border-radius: 13px; background: rgba(8, 17, 29, .63); }
+.scam-watch-admin-box h3 { margin: 4px 0; color: var(--gg-copy, #f4f6f8); font-size: 16px; }
+.scam-watch-admin-box p { margin: 0; color: var(--gg-copy-muted, #b2bdcb); font-size: 11px; line-height: 1.55; }
+.scam-watch-review-gate { color: #f0d28b !important; }
+.scam-watch-publish-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.scam-watch-publish-form label { display: grid; gap: 6px; color: #dfe7ee; font-size: 11px; font-weight: 700; }
+.scam-watch-publish-form input:not([type="checkbox"]),.scam-watch-publish-form textarea { width: 100%; min-height: 40px; padding: 10px 11px; border: 1px solid rgba(169, 187, 209, .18); border-radius: 9px; background: rgba(4, 10, 17, .75); color: #eef3f8; font: inherit; }
+.scam-watch-publish-form textarea { min-height: 84px; resize: vertical; }
+.scam-watch-publish-form .scam-watch-summary-input,.scam-watch-confirm,.scam-watch-publish-form > button { grid-column: 1 / -1; }
+.scam-watch-confirm { display: flex !important; align-items: flex-start; gap: 8px !important; color: var(--gg-copy-muted, #b2bdcb) !important; font-weight: 500 !important; }
+.scam-watch-confirm input { margin: 2px 0 0; accent-color: #80d6ae; }
+.scam-watch-publish-form button:disabled { cursor: not-allowed; opacity: .48; }
+.scam-watch-listed { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+@media (max-width: 760px) { .scam-watch-grid { grid-template-columns: 1fr; } .scam-watch-publish-form { grid-template-columns: 1fr; } .scam-watch-publish-form .scam-watch-summary-input,.scam-watch-confirm,.scam-watch-publish-form > button { grid-column: auto; } }
+@media (max-width: 520px) { .scam-watch-notice,.scam-watch-width,.scam-watch-grid,.scam-watch-flash { width: min(100% - 22px, 1160px); } .scam-watch-card { padding: 17px; } .scam-watch-card-top { align-items: flex-start; flex-direction: column; } }
