@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Gargand • Member reports{% endblock %}
+{% block content %}
+<section class="page-head control-admin-hero">
+  <span class="eyebrow">PRIVATE ADMIN · TRUST &amp; SAFETY</span>
+  <h1>Report inbox.</h1>
+  <p>Review private reports members send to Gargand in Discord DMs.</p>
+  <div class="control-hero-actions"><a class="gg-button gg-button-dark" href="/admin/panel">Admin home</a><a class="gg-button gg-button-dark" href="/admin/audit">Activity audit</a><a class="gg-button gg-button-dark" href="/admin/console">Command console</a></div>
+</section>
+<section class="control-report-summary" aria-label="Report status counts">
+  {% for status in ["open", "reviewing", "resolved", "dismissed"] %}
+  <a class="control-report-count {{ status }}" href="/admin/reports?status={{ status }}"><span>{{ status|capitalize }}</span><strong>{{ summary.get(status, 0) }}</strong></a>
+  {% endfor %}
+</section>
+<nav class="control-filter-bar" aria-label="Filter reports">
+  {% for status in ["open", "reviewing", "resolved", "dismissed", "all"] %}
+  <a class="{% if selected_status == status %}active{% endif %}" href="/admin/reports?status={{ status }}">{{ status|capitalize }}</a>
+  {% endfor %}
+</nav>
+{% if error %}<p class="control-inline-error">{{ error }}</p>{% endif %}
+<section class="control-report-list" aria-label="Member reports">
+  {% for report in reports %}
+  <article class="control-report-card">
+    <header><div><span class="control-report-id">REPORT #{{ report.report_id }}</span><h2>{{ report.guild_name }}</h2><p>{% if report.guild_id %}Server ID {{ report.guild_id }} · {% endif %}{{ report.created_at }}</p></div><span class="control-status-chip {{ report.status }}">{{ report.status|replace('_', ' ')|capitalize }}</span></header>
+    <div class="control-report-meta"><span><small>REPORTED BY</small><strong>{{ report.reporter_name or report.reporter_id }}</strong><a href="https://discord.com/users/{{ report.reporter_id }}" target="_blank" rel="noopener noreferrer">Open Discord profile ↗</a></span>{% if report.target %}<span><small>PERSON / TARGET</small><strong>{{ report.target }}</strong></span>{% endif %}</div>
+    <div class="control-report-details"><small>WHAT HAPPENED</small><p>{{ report.details }}</p></div>
+    <form class="control-report-update" method="post" action="/admin/reports/{{ report.report_id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="browser_check" value="{{ browser_verification_token }}"><input type="hidden" name="return_status" value="{{ selected_status }}">
+      <label>Status<select name="status"><option value="open" {% if report.status == "open" %}selected{% endif %}>Open</option><option value="reviewing" {% if report.status == "reviewing" %}selected{% endif %}>Reviewing</option><option value="resolved" {% if report.status == "resolved" %}selected{% endif %}>Resolved</option><option value="dismissed" {% if report.status == "dismissed" %}selected{% endif %}>Dismissed</option></select></label>
+      <label class="control-report-note">Staff note<textarea name="staff_note" maxlength="1000" placeholder="Private note for the review record">{{ report.staff_note }}</textarea></label>
+      <button class="gg-button gg-button-bright" type="submit">Save review</button>
+    </form>
+    {% if report.reviewed_by %}<p class="control-reviewer">Last updated by {{ report.reviewed_by }} · {{ report.updated_at }}</p>{% endif %}
+  </article>
+  {% else %}
+  <div class="control-empty-state"><span>✓</span><h2>No reports in this view</h2><p>New DM reports will appear here when Gargand checks in with the website.</p></div>
+  {% endfor %}
+</section>
+{% endblock %}

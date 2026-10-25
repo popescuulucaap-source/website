@@ -24,13 +24,14 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='gargand-performance.css') }}?v=20261025-performance2">
   <link rel="stylesheet" href="{{ url_for('static', filename='gargand-single-background.css') }}?v=20261025-staticbg1">
   <link rel="stylesheet" href="{{ url_for('static', filename='gargand-refinement.css') }}?v=20261025-admin-links1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='gargand-control-center.css') }}?v=20261025-reports-console1">
 </head>
 <body class="gargand-site">
   <div class="gg-site-backdrop" aria-hidden="true"></div>
   <header class="gg-header">
     <a class="gg-brand" href="/" aria-label="Gargand home"><span class="gg-mark" aria-hidden="true"><img src="{{ url_for('gargand_lion_asset') }}?v=lion202610" alt=""></span><span>GARGAND<span class="gg-dot">.</span></span></a>
     <nav class="gg-nav" aria-label="Main navigation">
-      <a href="/#features">Features</a><a href="/#cinematic-tour">Film</a><a href="/security">Security</a><a href="/verification">Verification</a><a href="/commands">Commands</a><a href="/support">Support</a><a href="/announcements">Updates</a><a href="/#gg-developers-title">Developers</a>
+      <a href="/features">Features</a><a href="/#cinematic-tour">Film</a><a href="/security">Security</a><a href="/verification">Verification</a><a href="/commands">Commands</a><a href="/reports">Report</a><a href="/support">Support</a><a href="/announcements">Updates</a><a href="/#gg-developers-title">Developers</a>
     </nav>
     <div class="gg-actions">
       <label class="gg-language-label" for="gargandLanguage">Language</label>
@@ -54,7 +55,7 @@
       {% endfor %}
     </div>
   </section>
-    <div class="gg-footer-bottom"><span>© Gargand · Built for communities</span><div><a href="/support">Support</a><a href="/socials">Socials</a><a href="/security">Security</a><a href="/verification">Verification</a><a href="/terms">Terms</a><a href="/announcements">Announcements</a><a href="/admin">Admin</a></div></div>
+    <div class="gg-footer-bottom"><span>© Gargand · Built for communities</span><div><a href="/features">Features</a><a href="/reports">Report</a><a href="/support">Support</a><a href="/socials">Socials</a><a href="/security">Security</a><a href="/verification">Verification</a><a href="/terms">Terms</a><a href="/announcements">Announcements</a><a href="/admin">Admin</a></div></div>
   </footer>
   <script>
     (function(){

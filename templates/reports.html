@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Gargand • Private reporting{% endblock %}
+{% block content %}
+<section class="page-head control-hero report-hero">
+  <span class="eyebrow">GARGAND TRUST &amp; SAFETY</span>
+  <h1>Report something privately.</h1>
+  <p>DM Gargand the word <code>report</code>. It will guide you through sending a report without posting the details in a public channel.</p>
+  <div class="control-hero-actions"><a class="gg-button gg-button-bright" href="{{ invite_url }}">Open Discord ↗</a><a class="gg-button gg-button-dark" href="/security">Read security features</a></div>
+</section>
+<section class="report-steps" aria-label="How to report">
+  <article><span>01</span><div><h2>Start a DM</h2><p>Open Gargand's Discord profile and send <code>report</code>. You can also use <code>!report</code> in a DM.</p></div></article>
+  <article><span>02</span><div><h2>Describe what happened</h2><p>Send one message. For the clearest review, use <code>server | person or target | what happened</code>. You can use <code>Gargand</code> for a bot or website issue.</p></div></article>
+  <article><span>03</span><div><h2>Staff review it</h2><p>Gargand sends a receipt with a report number. Owners can review the report and update its status in the private website admin panel.</p></div></article>
+</section>
+<section class="control-privacy-note"><span class="gg-kicker">YOUR PRIVACY</span><p>The report details are visible to Gargand's authorized website administrators and are not posted to a public Discord channel. The report stores your Discord ID so staff can investigate abuse and follow up. Do not include passwords, tokens or other account secrets.</p></section>
+{% endblock %}

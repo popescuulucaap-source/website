@@ -42,7 +42,8 @@ PASSIVE_VERIFICATION_ENDPOINTS = {
     "create_support_ticket", "add_support_message", "support_ai", "suggestions",
     "social_submit_video", "social_follow", "social_report", "post_review",
     "claim_daily", "update_profile", "social_like", "social_comment",
-    "mark_notifications_read", "api_award_xp",
+    "mark_notifications_read", "api_award_xp", "admin_console_command",
+    "admin_update_report",
 }
 
 
@@ -202,6 +203,11 @@ def inject_admin_csrf_token():
 def valid_admin_csrf():
     expected = session.get("admin_csrf_token", "")
     supplied = request.form.get("csrf_token", "")
+    if not supplied:
+        payload = request.get_json(silent=True)
+        if isinstance(payload, dict):
+            supplied = payload.get("csrf_token", "")
+    supplied = supplied if isinstance(supplied, str) else ""
     return bool(expected and supplied and compare_digest(expected, supplied))
 
 
@@ -268,6 +274,7 @@ CHANNEL_SETTINGS = {
     "logs_channel_id", "ticket_category_id", "ticket_panel_channel_id",
     "welcome_channel_id", "leave_channel_id", "verification_channel_id",
     "command_channel_id", "vouch_channel_id", "feedback_channel_id", "suggestions_channel_id",
+    "announcement_channel_id",
     "proof_channel_id", "gamble_channel_id", "staff_application_channel_id",
     "jail_category_id", "jail_chat_channel_id", "jail_appeal_channel_id",
     "autoreaction_channel_id", "modlog_channel_id", "levelup_channel_id",
@@ -308,7 +315,7 @@ COMMUNITY_NUMERIC_RANGES = {
     "xp_cooldown_seconds": (5, 3600),
 }
 SETTING_GROUPS = [
-    ("general", "General", "Identity, prefix and logging", [("prefix", "Command prefix", "text"), ("logs_channel_id", "Logs channel", "channel"), ("staff_role_id", "Staff role", "role")]),
+    ("general", "General", "Identity, prefix, announcements and logging", [("prefix", "Command prefix", "text"), ("logs_channel_id", "Logs channel", "channel"), ("announcement_channel_id", "Announcement channel", "channel"), ("staff_role_id", "Staff role", "role")]),
     ("community", "Community", "Welcome, roles, feedback, applications and XP", [("welcome_channel_id", "Welcome channel", "channel"), ("leave_channel_id", "Leave channel", "channel"), ("autorole_id", "Auto role", "role"), ("vouch_channel_id", "Vouch channel", "channel"), ("feedback_channel_id", "Feedback channel", "channel"), ("suggestions_channel_id", "Suggestions channel", "channel"), ("proof_channel_id", "Proof channel", "channel"), ("booster_role_id", "Booster role", "role"), ("staff_application_channel_id", "Applications channel", "channel"), ("autoreaction_channel_id", "Auto reaction channel", "channel"), ("autoreaction_emoji", "Auto reaction emoji", "text"), ("xp_enabled", "XP & levels", "toggle"), ("levelup_channel_id", "Level-up channel", "channel"), ("xp_per_message", "XP per message", "number"), ("xp_cooldown_seconds", "XP cooldown (seconds)", "number")]),
     ("security", "Security & Auto-Mod", "Automatic protection and moderation", [("anti_raid", "Anti-raid protection", "toggle"), ("raid_auto_lockdown", "Auto-lock channels during a join surge", "toggle"), ("anti_nuke", "Anti-nuke protection", "toggle"), ("anti_nuke_trusted_role_ids", "Trusted anti-nuke roles", "roles"), ("anti_nuke_window_seconds", "Anti-nuke event window (seconds)", "number"), ("anti_nuke_threshold_channel_delete", "Channel deletions before alert", "number"), ("anti_nuke_threshold_role_delete", "Role deletions before alert", "number"), ("anti_nuke_threshold_channel_update", "Channel edits before alert", "number"), ("anti_nuke_threshold_role_update", "Role edits before alert", "number"), ("anti_nuke_auto_lockdown", "Temporarily lock channels at threshold", "toggle"), ("anti_nuke_auto_ban", "Ban actor at threshold", "toggle"), ("anti_link", "Block links", "toggle"), ("anti_phishing_enabled", "Anti-phishing protection", "toggle"), ("antinsfw_enabled", "Anti-NSFW text and photos", "toggle"), ("antinsfw_log_channel_id", "Anti-NSFW log channel", "channel"), ("automod_spam", "Anti-spam", "toggle"), ("automod_flood", "Anti-flood", "toggle"), ("automod_mentions", "Mention protection", "toggle"), ("automod_bad_words", "Configured word filter", "toggle"), ("automod_punishment", "Auto-mod punishment", "choice"), ("automod_max_messages", "Max messages in window", "number"), ("automod_window_seconds", "Spam window (seconds)", "number"), ("automod_mention_limit", "Mention limit", "number"), ("automod_log_channel_id", "Auto-mod log channel", "channel"), ("j4j", "Join for join", "toggle"), ("j4j_dm", "J4J direct messages", "toggle"), ("verification_channel_id", "Verification channel", "channel"), ("command_channel_id", "Command-only channel", "channel")]),
     ("tickets", "Tickets & appeals", "Ticket panel, categories, questions and appeals", [("ticket_panel_channel_id", "Ticket panel channel", "channel"), ("ticket_category_id", "Ticket category", "channel"), ("ticket_options", "Ticket types (comma separated)", "list"), ("ticket_questions", "Ticket questions (JSON)", "json"), ("appeal_server_id", "Appeal server ID", "number"), ("appeal_invite_url", "Appeal invite URL", "text")]),
@@ -370,9 +377,9 @@ def refresh_discord_session():
 @app.before_request
 def require_discord_for_site():
     # Public browsing is allowed. State-changing/private areas still require Discord.
-    public_get = {"/", "/commands", "/planets", "/guidelines", "/announcements", "/suggestions", "/support", "/terms", "/socials", "/security", "/verification", "/gargand-lion.jpg", "/gargand-lion-4k.jpg", "/gargand-bar.gif"}
+    public_get = {"/", "/commands", "/features", "/reports", "/planets", "/guidelines", "/announcements", "/suggestions", "/support", "/terms", "/socials", "/security", "/verification", "/gargand-lion.jpg", "/gargand-lion-4k.jpg", "/gargand-bar.gif"}
     public_secret_api = set()
-    public_bot_api = {"/api/bot/heartbeat", "/api/bot/pull", "/api/bot/announcements", "/api/bot/job-result", "/api/bot/status"}
+    public_bot_api = {"/api/bot/heartbeat", "/api/bot/pull", "/api/bot/announcements", "/api/bot/job-result", "/api/bot/status", "/api/bot/events", "/api/bot/reports"}
     endpoint = request.endpoint or ""
     if endpoint in {"login", "oauth_callback", "health"} or endpoint.startswith("static") or endpoint.startswith("admin"):
         return None
@@ -393,6 +400,8 @@ BOT_LAST_SEEN = 0.0
 BOT_JOBS = deque()
 BOT_NEXT_JOB_ID = 1
 BOT_JOB_RESULTS = {}
+BOT_REPORTS = []
+BOT_NEXT_REPORT_ID = 1
 
 
 def bot_online():
@@ -482,12 +491,80 @@ def bot_events():
         conn.commit()
     return jsonify({"ok": True})
 
+
+@app.post("/api/bot/reports")
+def bot_submit_report():
+    denied = require_bot_key()
+    if denied:
+        return denied
+    payload = request.get_json(silent=True) or {}
+    source_message_id = str(payload.get("source_message_id") or "").strip()
+    reporter_id = str(payload.get("reporter_id") or "").strip()
+    reporter_name = str(payload.get("reporter_name") or "").strip()[:120]
+    guild_id = str(payload.get("guild_id") or "").strip()
+    guild_name = str(payload.get("guild_name") or "Not specified").strip()[:120] or "Not specified"
+    target = str(payload.get("target") or "").strip()[:200]
+    details = str(payload.get("details") or "").strip()[:3000]
+    if not source_message_id.isdigit() or not 17 <= len(source_message_id) <= 22:
+        return jsonify({"ok": False, "error": "A valid Discord message ID is required."}), 400
+    if not reporter_id.isdigit() or not 17 <= len(reporter_id) <= 22:
+        return jsonify({"ok": False, "error": "A valid reporter ID is required."}), 400
+    if guild_id and (not guild_id.isdigit() or not 17 <= len(guild_id) <= 22):
+        return jsonify({"ok": False, "error": "The server ID is invalid."}), 400
+    if len(details) < 10:
+        return jsonify({"ok": False, "error": "Please include at least 10 characters of report details."}), 400
+
+    global BOT_NEXT_REPORT_ID
+    created = False
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                row = conn.execute(
+                    "INSERT INTO bot_reports(source_message_id,reporter_id,reporter_name,guild_id,guild_name,target,details) "
+                    "VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(source_message_id) DO NOTHING RETURNING report_id",
+                    (source_message_id, reporter_id, reporter_name, guild_id or None, guild_name, target, details),
+                ).fetchone()
+                created = row is not None
+                if row:
+                    report_id = int(row[0])
+                    conn.execute(
+                        "INSERT INTO bot_telemetry(event_type,guild_id,guild_name,user_id,username,command_name,metadata) "
+                        "VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                        ("report_submitted", guild_id or None, guild_name, reporter_id, reporter_name,
+                         "dm report", json.dumps({"report_id": report_id, "target_included": bool(target)})),
+                    )
+                else:
+                    existing = conn.execute(
+                        "SELECT report_id FROM bot_reports WHERE source_message_id=%s", (source_message_id,)
+                    ).fetchone()
+                    report_id = int(existing[0]) if existing else 0
+                conn.commit()
+        except psycopg.Error as exc:
+            app.logger.warning("Could not store bot report: %s", type(exc).__name__)
+            return jsonify({"ok": False, "error": "Report storage is temporarily unavailable."}), 503
+    else:
+        existing = next((item for item in BOT_REPORTS if item["source_message_id"] == source_message_id), None)
+        if existing:
+            report_id = int(existing["report_id"])
+        else:
+            report_id = BOT_NEXT_REPORT_ID
+            BOT_NEXT_REPORT_ID += 1
+            BOT_REPORTS.insert(0, {
+                "report_id": report_id, "source_message_id": source_message_id,
+                "reporter_id": reporter_id, "reporter_name": reporter_name,
+                "guild_id": guild_id or None, "guild_name": guild_name, "target": target,
+                "details": details, "status": "open", "staff_note": "", "reviewed_by": "",
+                "created_at": time.time(), "updated_at": time.time(),
+            })
+            created = True
+    return jsonify({"ok": True, "report_id": report_id, "created": created})
+
 @app.get("/admin/audit")
 def admin_audit():
     if not is_admin():
         return redirect(url_for("admin_login"))
     events = []
-    summary = {"commands": 0, "messages": 0, "members_joined": 0, "members_left": 0, "tickets": 0, "closed_tickets": 0, "dashboard_actions": 0, "settings_updates": 0, "forms": 0, "security_incidents": 0}
+    summary = {"commands": 0, "command_errors": 0, "messages": 0, "members_joined": 0, "members_left": 0, "tickets": 0, "closed_tickets": 0, "dashboard_actions": 0, "settings_updates": 0, "forms": 0, "security_incidents": 0, "reports": 0, "console_commands": 0}
     if DATABASE_URL:
         with db_connect() as conn:
             rows = conn.execute("SELECT event_type,guild_id,guild_name,user_id,username,command_name,metadata,created_at FROM bot_telemetry ORDER BY id DESC LIMIT 500").fetchall()
@@ -504,11 +581,13 @@ def admin_audit():
                 events.append({
                     "event_type": r[0], "guild_id": r[1], "guild_name": r[2],
                     "user_id": r[3], "username": r[4], "command_name": r[5],
+                    "invocation_type": str(metadata.get("invocation_type") or "") if isinstance(metadata, dict) else "",
                     "metadata": json.dumps(metadata, ensure_ascii=False),
                     "created_at": r[7],
                 })
             for key, label in (
                 ("command_used","commands"),
+                ("command_error","command_errors"),
                 ("message_seen","messages"),
                 ("member_joined","members_joined"),
                 ("member_left","members_left"),
@@ -518,10 +597,106 @@ def admin_audit():
                 ("settings_updated","settings_updates"),
                 ("form_submitted","forms"),
                 ("security_incident","security_incidents"),
+                ("report_submitted","reports"),
+                ("admin_console_completed","console_commands"),
             ):
                 row = conn.execute("SELECT COUNT(*) FROM bot_telemetry WHERE event_type=%s", (key,)).fetchone()
                 summary[label] = int(row[0] or 0)
     return render_template("admin_audit.html", events=events, summary=summary)
+
+
+REPORT_STATUSES = {"open", "reviewing", "resolved", "dismissed"}
+
+
+@app.get("/admin/reports")
+def admin_reports():
+    if not is_admin():
+        return redirect(url_for("admin_login"))
+    selected_status = str(request.args.get("status") or "open").strip().lower()
+    if selected_status not in REPORT_STATUSES | {"all"}:
+        selected_status = "open"
+    reports = []
+    summary = {status: 0 for status in REPORT_STATUSES}
+    error = ""
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                for status in REPORT_STATUSES:
+                    row = conn.execute("SELECT COUNT(*) FROM bot_reports WHERE status=%s", (status,)).fetchone()
+                    summary[status] = int(row[0] or 0)
+                if selected_status == "all":
+                    rows = conn.execute(
+                        "SELECT report_id,reporter_id,reporter_name,guild_id,guild_name,target,details,status,staff_note,reviewed_by,created_at,updated_at "
+                        "FROM bot_reports ORDER BY created_at DESC LIMIT 200"
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT report_id,reporter_id,reporter_name,guild_id,guild_name,target,details,status,staff_note,reviewed_by,created_at,updated_at "
+                        "FROM bot_reports WHERE status=%s ORDER BY created_at DESC LIMIT 200", (selected_status,)
+                    ).fetchall()
+            reports = [{
+                "report_id": int(row[0]), "reporter_id": str(row[1]), "reporter_name": str(row[2] or ""),
+                "guild_id": str(row[3] or ""), "guild_name": str(row[4] or "Not specified"),
+                "target": str(row[5] or ""), "details": str(row[6] or ""), "status": str(row[7] or "open"),
+                "staff_note": str(row[8] or ""), "reviewed_by": str(row[9] or ""),
+                "created_at": row[10], "updated_at": row[11],
+            } for row in rows]
+        except psycopg.Error as exc:
+            app.logger.warning("Could not load DM reports: %s", type(exc).__name__)
+            error = "Reports are temporarily unavailable. Try refreshing in a moment."
+    else:
+        for report in BOT_REPORTS:
+            summary[report["status"]] = summary.get(report["status"], 0) + 1
+            if selected_status == "all" or report["status"] == selected_status:
+                reports.append(dict(report))
+    return render_template(
+        "admin_reports.html", reports=reports, summary=summary,
+        selected_status=selected_status, error=error,
+    )
+
+
+@app.post("/admin/reports/<int:report_id>")
+def admin_update_report(report_id):
+    if not is_admin():
+        return redirect(url_for("admin_login"))
+    if not valid_admin_csrf():
+        return "Invalid session token. Refresh the page and try again.", 400
+    status = str(request.form.get("status") or "").strip().lower()
+    staff_note = str(request.form.get("staff_note") or "").strip()[:1000]
+    if status not in REPORT_STATUSES:
+        return "Choose a valid report status.", 400
+    actor = session.get("user") or {}
+    actor_id = str(actor.get("id") or "")
+    actor_name = str(actor.get("global_name") or actor.get("username") or "Gargand admin")[:120]
+    guild_id = None
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                row = conn.execute(
+                    "UPDATE bot_reports SET status=%s,staff_note=%s,reviewed_by=%s,updated_at=NOW() "
+                    "WHERE report_id=%s RETURNING guild_id,guild_name",
+                    (status, staff_note, actor_id, report_id),
+                ).fetchone()
+            if row is None:
+                return "Report not found.", 404
+            guild_id = row[0]
+            record_bot_event(
+                "report_review_updated", guild_id=guild_id, guild_name=str(row[1] or ""),
+                user_id=actor_id, username=actor_name, command_name="admin reports",
+                metadata={"report_id": report_id, "status": status},
+            )
+        except psycopg.Error as exc:
+            app.logger.warning("Could not update DM report: %s", type(exc).__name__)
+            return "Report status could not be saved. Try again.", 503
+    else:
+        report = next((item for item in BOT_REPORTS if int(item["report_id"]) == report_id), None)
+        if report is None:
+            return "Report not found.", 404
+        report.update({"status": status, "staff_note": staff_note, "reviewed_by": actor_id, "updated_at": time.time()})
+    return_status = str(request.form.get("return_status") or "open").strip().lower()
+    if return_status not in REPORT_STATUSES | {"all"}:
+        return_status = "open"
+    return redirect(url_for("admin_reports", status=return_status))
 
 @app.post("/api/bot/heartbeat")
 def bot_heartbeat():
@@ -762,6 +937,8 @@ def init_db():
             cur.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'website'")
             cur.execute("CREATE TABLE IF NOT EXISTS bot_telemetry (id BIGSERIAL PRIMARY KEY, event_type TEXT NOT NULL, guild_id TEXT, guild_name TEXT, user_id TEXT, username TEXT, command_name TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cur.execute("CREATE INDEX IF NOT EXISTS bot_telemetry_created_at_idx ON bot_telemetry(created_at DESC)")
+            cur.execute("CREATE TABLE IF NOT EXISTS bot_reports (report_id BIGSERIAL PRIMARY KEY, source_message_id TEXT NOT NULL UNIQUE, reporter_id TEXT NOT NULL, reporter_name TEXT NOT NULL DEFAULT '', guild_id TEXT, guild_name TEXT NOT NULL DEFAULT 'Not specified', target TEXT NOT NULL DEFAULT '', details TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', staff_note TEXT NOT NULL DEFAULT '', reviewed_by TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cur.execute("CREATE INDEX IF NOT EXISTS bot_reports_status_created_idx ON bot_reports(status, created_at DESC)")
             cur.execute("CREATE TABLE IF NOT EXISTS security_incident_reviews (guild_id TEXT NOT NULL, case_id TEXT NOT NULL, reviewed_by TEXT NOT NULL, reviewer_name TEXT NOT NULL, reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), note TEXT NOT NULL DEFAULT '', PRIMARY KEY (guild_id, case_id))")
             # Seed the public bot release announcements once, without duplicating them.
             bot_releases = [
@@ -827,6 +1004,8 @@ def init_db():
             cur.execute("CREATE TABLE IF NOT EXISTS bot_bridge_state (state_id SMALLINT PRIMARY KEY CHECK (state_id = 1), last_seen DOUBLE PRECISION NOT NULL, guilds TEXT NOT NULL)")
             cur.execute("CREATE TABLE IF NOT EXISTS bot_jobs (job_id BIGSERIAL PRIMARY KEY, guild_id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cur.execute("CREATE TABLE IF NOT EXISTS bot_job_results (job_id BIGINT PRIMARY KEY, guild_id TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cur.execute("CREATE TABLE IF NOT EXISTS admin_console_runs (job_id BIGINT PRIMARY KEY, guild_id TEXT NOT NULL, guild_name TEXT NOT NULL DEFAULT '', actor_id TEXT NOT NULL, actor_name TEXT NOT NULL DEFAULT '', command TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', message TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cur.execute("CREATE INDEX IF NOT EXISTS admin_console_runs_created_idx ON admin_console_runs(created_at DESC)")
             cur.execute("CREATE TABLE IF NOT EXISTS reviews (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, rating INTEGER NOT NULL, review TEXT NOT NULL, date TEXT NOT NULL, approved BOOLEAN NOT NULL DEFAULT TRUE)")
             cur.execute("CREATE TABLE IF NOT EXISTS support_tickets (id BIGSERIAL PRIMARY KEY, token TEXT UNIQUE NOT NULL, name TEXT NOT NULL, subject TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cur.execute("CREATE TABLE IF NOT EXISTS support_messages (id BIGSERIAL PRIMARY KEY, ticket_id BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE, sender TEXT NOT NULL, message TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -1096,6 +1275,19 @@ def index():
     ]
     return render_template("index.html", features=features, command_count=len(all_commands()), developers=load_developers())
 
+
+@app.get("/features")
+def features_page():
+    feature_groups = [
+        ("Moderation", "Clear, accountable tools for everyday staff work.", ["Warnings, timeouts, kicks and bans", "Searchable moderation cases and appeals", "Purge, slowmode, locks and jail"]),
+        ("Protection", "Prevent raids and catch dangerous changes early.", ["Anti-raid and anti-nuke controls", "Anti-spam, anti-flood and mention limits", "Verification, phishing and link protection"]),
+        ("Community", "Keep members active with tools that fit the server.", ["XP, levels, quests and achievements", "Giveaways, polls, parties and economy", "Welcome messages, vouches and suggestions"]),
+        ("Tickets & support", "Give members a private route to the right staff.", ["Ticket panels, custom questions and claims", "Ban and jail appeals", "Private DM reporting with an admin review queue"]),
+        ("Music & discovery", "One bot for more of the activities your server runs.", ["Voice music playback and queues", "RSS and anime notifications", "Image search and AI-powered fun commands"]),
+        ("Website control room", "Manage Gargand and see what the bot is doing.", ["Server settings and setup health", "Activity audit, reports and announcements", "A safe admin command console with a server selector"]),
+    ]
+    return render_template("features.html", feature_groups=feature_groups, command_count=len(all_commands()))
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
     # A password alone is never sufficient; Discord OAuth must verify the exact allowlisted ID.
@@ -1190,6 +1382,121 @@ def admin():
             app.logger.warning("Could not read telemetry counts: %s", type(exc).__name__)
     return render_template("admin.html", announcements=announcements, custom_commands=custom_commands, developers=load_developers(), database_enabled=bool(DATABASE_URL), stats=stats, bot_guilds=guilds)
 
+
+@app.get("/admin/console")
+def admin_console():
+    if not is_admin():
+        return redirect(url_for("admin_login"))
+    guilds = sorted(bot_guild_snapshot(), key=lambda guild: str(guild.get("name") or "").casefold())
+    runs = []
+    error = ""
+    if DATABASE_URL:
+        try:
+            with db_connect() as conn:
+                rows = conn.execute(
+                    "SELECT job_id,guild_id,guild_name,actor_id,actor_name,command,status,message,created_at "
+                    "FROM admin_console_runs ORDER BY created_at DESC LIMIT 40"
+                ).fetchall()
+            runs = [{
+                "job_id": int(row[0]), "guild_id": str(row[1]), "guild_name": str(row[2] or ""),
+                "actor_id": str(row[3]), "actor_name": str(row[4] or ""), "command": str(row[5]),
+                "status": str(row[6]), "message": str(row[7] or ""), "created_at": row[8],
+            } for row in rows]
+        except psycopg.Error as exc:
+            app.logger.warning("Could not load admin console history: %s", type(exc).__name__)
+            error = "Command history is temporarily unavailable."
+    else:
+        error = "Connect the website database to keep command history."
+    return render_template("admin_console.html", guilds=guilds, runs=runs, error=error, bot_online=bot_online())
+
+
+@app.post("/api/admin/console/commands")
+def admin_console_command():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "Admin access is required."}), 403
+    if not valid_admin_csrf():
+        return jsonify({"ok": False, "error": "Your session expired. Refresh the page and try again."}), 400
+    if not DATABASE_URL:
+        return jsonify({"ok": False, "error": "The database is required to queue and audit bot commands."}), 503
+    if not bot_online():
+        return jsonify({"ok": False, "error": "Gargand is offline. Bring the bot online before running a command."}), 503
+    payload = request.get_json(silent=True) or {}
+    guild_id = str(payload.get("guild_id") or "").strip()
+    clean_command = str(payload.get("command") or "").strip()
+    if not guild_id.isdigit() or len(guild_id) > 22:
+        return jsonify({"ok": False, "error": "Choose a valid server."}), 400
+    if not clean_command or len(clean_command) > 1800 or "\n" in clean_command or "\r" in clean_command:
+        return jsonify({"ok": False, "error": "Enter one command, up to 1,800 characters."}), 400
+    guild = next((item for item in bot_guild_snapshot() if str(item.get("id")) == guild_id), None)
+    if not guild:
+        return jsonify({"ok": False, "error": "That server is not in Gargand's latest heartbeat."}), 404
+    command_parts = clean_command.split(maxsplit=1)
+    command_name = command_parts[0].lstrip("!/").casefold()
+    argument = command_parts[1].strip() if len(command_parts) > 1 else ""
+    if command_name == "help":
+        return jsonify({"ok": True, "message": "Supported commands: /status, /refresh, /announce <message>. These run through Gargand's allowlisted admin actions."})
+    if command_name not in {"status", "refresh", "announce"}:
+        return jsonify({"ok": False, "error": "Supported commands: /status, /refresh, /announce <message>."}), 400
+    if command_name == "announce" and not argument:
+        return jsonify({"ok": False, "error": "Add announcement text after /announce."}), 400
+    if command_name != "announce" and argument:
+        return jsonify({"ok": False, "error": f"/{command_name} does not take arguments."}), 400
+    if len(argument) > 1600:
+        return jsonify({"ok": False, "error": "Announcements are limited to 1,600 characters."}), 400
+
+    actor = session.get("user") or {}
+    actor_id = str(actor.get("id") or "")
+    actor_name = str(actor.get("global_name") or actor.get("username") or "Gargand admin")[:120]
+    job_payload = {"action": command_name, "requested_by": actor_id, "requested_by_name": actor_name}
+    if command_name == "announce":
+        job_payload["message"] = argument
+    try:
+        with db_connect() as conn:
+            row = conn.execute(
+                "INSERT INTO bot_jobs (guild_id,kind,payload) VALUES (%s,%s,%s) RETURNING job_id",
+                (guild_id, "admin_console", json.dumps(job_payload)),
+            ).fetchone()
+            job_id = int(row[0])
+            conn.execute(
+                "INSERT INTO admin_console_runs(job_id,guild_id,guild_name,actor_id,actor_name,command,status) "
+                "VALUES(%s,%s,%s,%s,%s,%s,'pending')",
+                (job_id, guild_id, str(guild.get("name") or "Discord server")[:120], actor_id, actor_name, clean_command),
+            )
+            conn.commit()
+    except psycopg.Error as exc:
+        app.logger.warning("Could not queue admin console command: %s", type(exc).__name__)
+        return jsonify({"ok": False, "error": "The command could not be queued. Try again."}), 503
+    record_bot_event(
+        "admin_console_queued", guild_id=guild_id, guild_name=str(guild.get("name") or ""),
+        user_id=actor_id, username=actor_name, command_name=command_name,
+        metadata={"job_id": int(job_id), "command": clean_command[:500]},
+    )
+    return jsonify({"ok": True, "job_id": int(job_id), "message": "Command queued for Gargand."})
+
+
+@app.get("/api/admin/console/jobs/<int:job_id>")
+def admin_console_job_status(job_id):
+    if not is_admin():
+        return jsonify({"ok": False, "error": "Admin access is required."}), 403
+    if not DATABASE_URL:
+        return jsonify({"ok": False, "error": "Command history is unavailable."}), 503
+    try:
+        with db_connect() as conn:
+            row = conn.execute(
+                "SELECT status,message,command,guild_name,updated_at FROM admin_console_runs WHERE job_id=%s",
+                (job_id,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        app.logger.warning("Could not read admin console result: %s", type(exc).__name__)
+        return jsonify({"ok": False, "error": "Command status is temporarily unavailable."}), 503
+    if not row:
+        return jsonify({"ok": False, "error": "Command not found."}), 404
+    return jsonify({
+        "ok": True, "status": str(row[0]), "message": str(row[1] or ""),
+        "command": str(row[2]), "guild_name": str(row[3]),
+        "updated_at": row[4].isoformat() if hasattr(row[4], "isoformat") else str(row[4] or ""),
+    })
+
 @app.post("/admin/developer")
 def admin_developer():
     if not is_admin():
@@ -1276,6 +1583,11 @@ def terms():
 @app.get("/security")
 def security():
     return render_template("security.html")
+
+
+@app.get("/reports")
+def reports_page():
+    return render_template("reports.html")
 
 
 @app.get("/verification")
@@ -1794,7 +2106,7 @@ def commands():
             "usage": command,
             "example": command,
         })
-    return render_template("commands.html", commands=listed)
+    return render_template("commands.html", commands=listed, bot_online=bot_online())
 
 
 @app.get("/guidelines")
@@ -2423,6 +2735,11 @@ def bot_job_result():
                     "ON CONFLICT(job_id) DO UPDATE SET guild_id=EXCLUDED.guild_id,action=EXCLUDED.action,status=EXCLUDED.status,message=EXCLUDED.message,updated_at=NOW()",
                     (job_id, guild_id, action, status, message),
                 )
+                if action.startswith("admin_console:"):
+                    conn.execute(
+                        "UPDATE admin_console_runs SET status=%s,message=%s,updated_at=NOW() WHERE job_id=%s AND guild_id=%s",
+                        (status, message, job_id, guild_id),
+                    )
                 # Keep the table bounded without deleting results that are still recent.
                 conn.execute("DELETE FROM bot_job_results WHERE updated_at < NOW() - INTERVAL '7 days'")
                 conn.commit()
@@ -3152,7 +3469,7 @@ COMMANDS = [
     ("!ban @member [reason]", "Moderation", "Ban a member. Staff only."),
     ("!kick @member [reason]", "Moderation", "Kick a member. Staff only."),
     ("!warn @member [reason]", "Moderation", "Warn a member. Staff only."),
-    ("!report @member <reason>", "Community", "Send a member report to the configured staff log channel; the report is saved as a moderation case."),
+    ("!report @member <reason>", "Community", "Report a member in-server, or DM Gargand the word report for a private guided report that appears in the website inbox."),
     ("!purge <amount>", "Moderation", "Delete recent messages. Alias: !clear."),
     ("!warnings @member", "Moderation", "Show a member's warning record. Alias: !warns."),
     ("!clearwarnings @member", "Moderation", "Clear a member's warning record. Alias: !resetwarnings."),
