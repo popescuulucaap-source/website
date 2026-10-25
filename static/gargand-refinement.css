@@ -441,6 +441,19 @@ body.gg-intro-complete #main-content .gg-hero-copy {
   min-width: 0;
 }
 
+.gg-admin-server-list > article > .gg-admin-server-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gg-admin-server-invite-status {
+  max-width: 280px;
+  text-align: right;
+}
+
 .gg-admin-server-list > article strong {
   overflow-wrap: anywhere;
 }
@@ -530,6 +543,14 @@ body.gg-intro-complete #main-content .gg-hero-copy {
   .gg-admin-server-list > article {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .gg-admin-server-list > article > .gg-admin-server-actions {
+    justify-content: flex-start;
+  }
+
+  .gg-admin-server-invite-status {
+    text-align: left;
   }
 }
 

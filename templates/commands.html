@@ -4,7 +4,7 @@
 <section class="page-head">
   <span class="eyebrow">GARGAND COMMAND LIBRARY</span>
   <h1>Find your next command.</h1>
-  <p>Live commands are supplied by Gargand's registered bot command catalog. The <code>!</code> prefix works for legacy commands; slash commands appear separately when registered.</p>
+  <p>Commands come from Gargand's registered bot catalog. <code>!</code> always works; configured server prefixes appear on prefix-command cards, and registered slash commands are listed separately.</p>
 </section>
 <section class="command-tools" aria-label="Find commands">
   <label class="command-search"><span>⌕</span><input id="commandSearch" type="search" placeholder="Search music, quests, audit logs, aliases, examples…" autocomplete="off" aria-label="Search commands"></label>
@@ -18,7 +18,7 @@
 </section>
 <div class="command-grid" id="commandGrid">
   {% for cmd in commands %}
-  <article class="command-card" style="--command-index:{{ loop.index0 }}" data-category="{{ cmd.category|lower }}" data-search="{{ (cmd.command ~ ' ' ~ cmd.name ~ ' ' ~ cmd.category ~ ' ' ~ cmd.description ~ ' ' ~ (cmd.aliases|join(' ')) ~ ' ' ~ cmd.permission ~ ' ' ~ cmd.example ~ ' ' ~ cmd.mode)|lower }}">
+  <article class="command-card" style="--command-index:{{ loop.index0 }}" data-category="{{ cmd.category|lower }}" data-search="{{ (cmd.command ~ ' ' ~ cmd.name ~ ' ' ~ cmd.category ~ ' ' ~ cmd.description ~ ' ' ~ (cmd.aliases|join(' ')) ~ ' ' ~ (cmd.prefixes|default([])|join(' ')) ~ ' ' ~ cmd.permission ~ ' ' ~ cmd.example ~ ' ' ~ cmd.mode)|lower }}">
     <span class="tag">{{ cmd.category }}</span>
     <button class="copy-command" type="button" aria-label="Copy {{ cmd.usage }}" data-copy="{{ cmd.usage }}">Copy usage</button>
     <code>{{ cmd.command }}</code>
@@ -26,6 +26,9 @@
     <div class="command-details">
       <span class="command-mode">{{ cmd.mode|capitalize }}</span>
       <span class="command-permission">Access: {{ cmd.permission }}</span>
+      {% if cmd.prefixes %}
+      <p class="command-prefixes"><strong>Prefixes:</strong> {% for prefix in cmd.prefixes %}<code>{{ prefix }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+      {% endif %}
       {% if cmd.aliases %}
       <p class="command-aliases"><strong>Aliases:</strong> {% for alias in cmd.aliases %}<code>{{ alias }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
       {% endif %}

@@ -10,10 +10,26 @@
   </div>
 </section>
 <section class="gg-section" id="bot-servers">
-  <div class="gg-section-head"><div><span class="gg-kicker">BOT SERVERS</span><h2>Servers Gargand is in</h2></div><p>Open a server directly in Discord. Links work for accounts that already have access to that server.</p></div>
+  <div class="gg-section-head"><div><span class="gg-kicker">BOT SERVERS</span><h2>Servers Gargand is in</h2></div><p>Every server has a direct Discord link. Invite links appear when Gargand can create one in that server.</p></div>
   <div class="gg-admin-server-list">
     {% for guild in bot_guilds %}
-      <article><div><strong>{{ guild.name }}</strong><span>{{ guild.member_count or "—" }} members · Server ID {{ guild.id }}</span></div><a class="gg-button gg-button-dark" href="{{ guild.invite_url or ('https://discord.com/channels/' ~ guild.id) }}" target="_blank" rel="noopener noreferrer">{% if guild.invite_url %}Open invite ↗{% else %}Open server ↗{% endif %}</a></article>
+      <article>
+        <div><strong>{{ guild.name }}</strong><span>{{ guild.member_count or "—" }} members · Server ID {{ guild.id }}</span></div>
+        <div class="gg-admin-server-actions">
+          <a class="gg-button gg-button-dark" href="{{ guild.server_url or ('https://discord.com/channels/' ~ guild.id) }}" target="_blank" rel="noopener noreferrer">Open server ↗</a>
+          {% if guild.invite_url %}
+            <a class="gg-button gg-button-bright" href="{{ guild.invite_url }}" target="_blank" rel="noopener noreferrer">Invite members ↗</a>
+          {% elif guild.invite_status == "permission_missing" %}
+            <span class="gg-admin-server-invite-status">Invite link needs Create Invite permission in a text channel.</span>
+          {% elif guild.invite_status == "discord_error" %}
+            <span class="gg-admin-server-invite-status">Discord could not create an invite. Check the bot's channel permissions.</span>
+          {% elif guild.invite_status == "bot_member_missing" %}
+            <span class="gg-admin-server-invite-status">Gargand could not verify its server membership.</span>
+          {% else %}
+            <span class="gg-admin-server-invite-status">Checking invite permissions…</span>
+          {% endif %}
+        </div>
+      </article>
     {% else %}
       <p class="gg-admin-server-empty">No server snapshot yet. Once Gargand checks in, its server list will appear here.</p>
     {% endfor %}
