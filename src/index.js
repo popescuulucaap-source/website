@@ -40,7 +40,7 @@ export class GargandContainer extends Container {
   // This keeps the site responsive between visits without running an idle
   // container indefinitely. Cloudflare may cold-start it after inactivity.
   sleepAfter = "10m";
-  pingEndpoint = "container/health";
+  pingEndpoint = "localhost/health";
   envVars = containerEnvironment;
 }
 
