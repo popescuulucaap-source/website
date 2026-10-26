@@ -1408,8 +1408,7 @@ def all_commands():
         })
     return rows
 
-init_db()
-sync_repository_updates(force=True)
+# Persistent storage is initialized once in the guarded startup block at the end of this file.
 
 @app.get("/")
 def index():
@@ -4266,6 +4265,13 @@ try:
     init_db()
 except psycopg.Error as exc:
     app.logger.error("Database initialization failed: %s", type(exc).__name__)
+    # Keep the public site available during a database quota/outage. Persistent
+    # features temporarily use their in-memory fallbacks; the environment value
+    # remains configured in Render, so a restart will retry the database.
+    DATABASE_URL = ""
+    app.logger.warning("Continuing in temporary in-memory mode while the database is unavailable.")
+
+sync_repository_updates(force=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
